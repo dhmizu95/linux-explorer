@@ -186,7 +186,7 @@ pub fn resize_handles(app: &mut App, ctx: &egui::Context) {
         (false, true) => Color32::from_gray(0x9A),
         (false, false) => Color32::from_gray(0xC8),
     };
-    ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::from(egui::IdSalt::new("window_edge")))).rect_stroke(
+    ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::unique("window_edge"))).rect_stroke(
         r,
         CornerRadius::ZERO,
         Stroke::new(1.0, edge),
