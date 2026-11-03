@@ -696,7 +696,8 @@ fn open_with(app: &mut App, ctx: &egui::Context) {
                 if !f.is_empty() && !a.name.to_lowercase().contains(&f) {
                     continue;
                 }
-                let r = ui.add(egui::Button::selectable(ow.selected == i, &a.name).min_size(vec2(400.0, 30.0)));
+                let icon = crate::thumbs::app_icon(&mut app.thumbs, ui.ctx(), a.icon.as_deref(), 20.0);
+                let r = ui.add(egui::Button::selectable(ow.selected == i, (icon, a.name.as_str())).min_size(vec2(400.0, 30.0)));
                 if r.clicked() {
                     ow.selected = i;
                 }

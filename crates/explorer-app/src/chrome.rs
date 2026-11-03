@@ -178,6 +178,20 @@ pub fn resize_handles(app: &mut App, ctx: &egui::Context) {
         return;
     }
     let r = ctx.content_rect();
+    // 1px outline so the window separates from others (most visible in dark mode).
+    let focused = ctx.input(|i| i.viewport().focused.unwrap_or(true));
+    let edge = match (app.palette.dark, focused) {
+        (true, true) => Color32::from_gray(0x70),
+        (true, false) => Color32::from_gray(0x4A),
+        (false, true) => Color32::from_gray(0x9A),
+        (false, false) => Color32::from_gray(0xC8),
+    };
+    ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::from(egui::IdSalt::new("window_edge")))).rect_stroke(
+        r,
+        CornerRadius::ZERO,
+        Stroke::new(1.0, edge),
+        egui::StrokeKind::Inside,
+    );
     let Some(pos) = ctx.input(|i| i.pointer.hover_pos()) else { return };
     let m = 5.0;
     let (l, rt, t, b) = (pos.x < r.left() + m, pos.x > r.right() - m, pos.y < r.top() + m, pos.y > r.bottom() - m);

@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{Mutex, OnceLock};
 
 use crate::places::{config_home, xdg_data_dirs};
 
@@ -353,6 +354,103 @@ pub fn set_default(mime: &str, app_id: &str) -> std::io::Result<()> {
     fs::write(p, out)
 }
 
+/// File for a desktop entry's `Icon=` value, resolved through the user's
+/// icon theme, its parents, hicolor and pixmaps. Results are memoised.
+pub fn icon_path(icon: &str) -> Option<PathBuf> {
+    static CACHE: OnceLock<Mutex<HashMap<String, Option<PathBuf>>>> = OnceLock::new();
+    static THEMES: OnceLock<Vec<Vec<IconDir>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(Default::default);
+    if let Some(p) = cache.lock().unwrap().get(icon) {
+        return p.clone();
+    }
+    let data = xdg_data_dirs();
+    let themes = THEMES.get_or_init(|| theme_chain(&data, &user_icon_theme().unwrap_or_else(|| "Adwaita".into())));
+    let found = find_icon(icon, themes, &data);
+    cache.lock().unwrap().insert(icon.to_string(), found.clone());
+    found
+}
+
+/// One `Directories=` entry of an icon theme.
+#[derive(Debug)]
+struct IconDir {
+    path: PathBuf,
+    size: u32,
+    scalable: bool,
+}
+
+fn ini_value(text: &str, group: &str, key: &str) -> Option<String> {
+    let mut in_group = false;
+    for line in text.lines().map(str::trim) {
+        if line.starts_with('[') {
+            in_group = line == format!("[{group}]");
+        } else if let Some((k, v)) = line.split_once('=').filter(|_| in_group) {
+            if k.trim() == key {
+                return Some(v.trim().to_string());
+            }
+        }
+    }
+    None
+}
+
+// ponytail: reads KDE and GTK3 config files only; GNOME's dconf setting is
+// not read (defaults to Adwaita, which is GNOME's default anyway).
+fn user_icon_theme() -> Option<String> {
+    let cfg = config_home();
+    let read = |f: &str, g: &str, k: &str| fs::read_to_string(cfg.join(f)).ok().and_then(|t| ini_value(&t, g, k));
+    read("kdeglobals", "Icons", "Theme").or_else(|| read("gtk-3.0/settings.ini", "Settings", "gtk-icon-theme-name"))
+}
+
+/// Directories of `theme` and every theme it inherits from, hicolor last.
+fn theme_chain(data: &[PathBuf], theme: &str) -> Vec<Vec<IconDir>> {
+    let mut names = vec![theme.to_string()];
+    let mut out = Vec::new();
+    while let Some(name) = names.get(out.len()).cloned() {
+        let mut dirs = Vec::new();
+        for root in data.iter().map(|d| d.join("icons").join(&name)) {
+            let Ok(index) = fs::read_to_string(root.join("index.theme")) else { continue };
+            if let Some(parents) = ini_value(&index, "Icon Theme", "Inherits") {
+                for p in parents.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+                    if !names.iter().any(|n| n == p) {
+                        names.push(p.to_string());
+                    }
+                }
+            }
+            for sub in ini_value(&index, "Icon Theme", "Directories").unwrap_or_default().split(',').filter(|s| !s.is_empty()) {
+                let size = ini_value(&index, sub, "Size").and_then(|s| s.parse().ok()).unwrap_or(0);
+                let scalable = ini_value(&index, sub, "Type").as_deref() == Some("Scalable");
+                dirs.push(IconDir { path: root.join(sub), size, scalable });
+            }
+        }
+        out.push(dirs);
+        if out.len() == names.len() && !names.iter().any(|n| n == "hicolor") {
+            names.push("hicolor".into());
+        }
+    }
+    out
+}
+
+fn find_icon(icon: &str, themes: &[Vec<IconDir>], data: &[PathBuf]) -> Option<PathBuf> {
+    if icon.starts_with('/') {
+        return Path::new(icon).is_file().then(|| icon.into());
+    }
+    const WANT: u32 = 48;
+    for dirs in themes {
+        // Best: the smallest bitmap at least WANT px, then a vector, then the biggest bitmap.
+        let best = dirs
+            .iter()
+            .flat_map(|d| ["png", "svg"].map(|ext| (d, d.path.join(format!("{icon}.{ext}")))))
+            .filter(|(_, p)| p.is_file())
+            .min_by_key(|(d, p)| {
+                let svg = d.scalable || p.extension().is_some_and(|e| e == "svg");
+                if svg { (1, 0) } else if d.size >= WANT { (0, d.size) } else { (2, u32::MAX - d.size) }
+            });
+        if let Some((_, p)) = best {
+            return Some(p);
+        }
+    }
+    data.iter().flat_map(|d| ["png", "svg"].map(|ext| d.join("pixmaps").join(format!("{icon}.{ext}")))).find(|p| p.is_file())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -397,5 +495,30 @@ mod tests {
         );
         assert_eq!(m.defaults["text/plain"], vec!["a.desktop", "b.desktop"]);
         assert_eq!(m.removed["text/plain"], vec!["c.desktop"]);
+    }
+
+    #[test]
+    fn icon_theme_lookup() {
+        let t = tempfile::tempdir().unwrap();
+        let d = t.path();
+        let w = |p: &str, s: &str| {
+            fs::create_dir_all(d.join(p).parent().unwrap()).unwrap();
+            fs::write(d.join(p), s).unwrap();
+        };
+        w("icons/mine/index.theme", "[Icon Theme]\nInherits=hicolor\nDirectories=apps/16,apps/scalable\n[apps/16]\nSize=16\n[apps/scalable]\nSize=48\nType=Scalable\n");
+        w("icons/mine/apps/16/ed.png", "");
+        w("icons/mine/apps/scalable/ed.svg", "");
+        w("icons/hicolor/index.theme", "[Icon Theme]\nDirectories=48x48/apps,16x16/apps\n[48x48/apps]\nSize=48\n[16x16/apps]\nSize=16\n");
+        w("icons/hicolor/48x48/apps/ed.png", "");
+        w("icons/hicolor/16x16/apps/only.png", "");
+        w("pixmaps/old.png", "");
+        let data = vec![d.to_path_buf()];
+        let themes = theme_chain(&data, "mine");
+        assert_eq!(themes.len(), 2, "mine then hicolor, hicolor not repeated");
+        // The user's theme wins, and its vector beats a too-small bitmap.
+        assert_eq!(find_icon("ed", &themes, &data), Some(d.join("icons/mine/apps/scalable/ed.svg")));
+        assert_eq!(find_icon("only", &themes, &data), Some(d.join("icons/hicolor/16x16/apps/only.png")));
+        assert_eq!(find_icon("old", &themes, &data), Some(d.join("pixmaps/old.png")));
+        assert_eq!(find_icon("missing", &themes, &data), None);
     }
 }

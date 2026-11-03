@@ -179,7 +179,8 @@ fn items_menu(app: &mut App, ui: &mut Ui, cmds: &mut Vec<Cmd>) {
             ui.menu_button(egui::RichText::new("Open with"), |ui| {
                 ui.set_min_width(240.0);
                 for a in apps.iter().take(12) {
-                    if ui.button(&a.name).clicked() {
+                    let icon = crate::thumbs::app_icon(&mut app.thumbs, ui.ctx(), a.icon.as_deref(), 16.0);
+                    if ui.button((icon, a.name.as_str())).clicked() {
                         cmds.push(Cmd::OpenWith(e.path.clone(), a.clone()));
                     }
                 }

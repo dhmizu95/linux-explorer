@@ -165,6 +165,30 @@ fn pdf_thumb(path: &Path, size: u32) -> Option<ColorImage> {
     .flatten()
 }
 
+/// SVG rasterised in-process (resvg). Only app icons reach this: SVG files in
+/// folders are not thumbnailed (`is_thumbable`).
+fn svg_image(path: &Path, size: u32) -> Option<ColorImage> {
+    use resvg::{tiny_skia, usvg};
+    let data = std::fs::read(path).ok().filter(|d| d.len() as u64 <= MAX_FILE)?;
+    let tree = usvg::Tree::from_data(&data, &usvg::Options::default()).ok()?;
+    let s = tree.size();
+    let scale = size as f32 / s.width().max(s.height());
+    let (w, h) = ((s.width() * scale).ceil() as u32, (s.height() * scale).ceil() as u32);
+    let mut pix = tiny_skia::Pixmap::new(w.max(1), h.max(1))?;
+    resvg::render(&tree, tiny_skia::Transform::from_scale(scale, scale), &mut pix.as_mut());
+    Some(ColorImage::from_rgba_premultiplied([w.max(1) as usize, h.max(1) as usize], pix.data()))
+}
+
+/// Image atom for a desktop app's icon, or an empty gap of the same size while
+/// it loads or when the app has none, so names stay aligned.
+pub fn app_icon(thumbs: &mut Thumbs, ctx: &egui::Context, icon: Option<&str>, px: f32) -> egui::Atom<'static> {
+    let size = egui::vec2(px, px);
+    match icon.and_then(explorer_core::apps::icon_path).and_then(|p| thumbs.get(ctx, &p, None, 48)) {
+        Some(t) => egui::Image::new((t, size)).into(),
+        None => egui::Atom::custom(egui::IdSalt::new("app_icon_gap"), size),
+    }
+}
+
 fn decode(path: &Path, size: u32) -> Option<ColorImage> {
     let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
     let source = if is_image_ext(&ext) {
@@ -173,6 +197,8 @@ fn decode(path: &Path, size: u32) -> Option<ColorImage> {
         c
     } else if ext == "pdf" {
         return pdf_thumb(path, size.max(128));
+    } else if ext == "svg" {
+        return svg_image(path, size);
     } else {
         return None; // videos: only thumbnails other apps already cached
     };
@@ -228,5 +254,11 @@ mod tests {
         // Videos without a cached thumbnail just fall back to the icon.
         std::fs::write(t.path().join("v.mp4"), b"x").unwrap();
         assert!(decode(&t.path().join("v.mp4"), 64).is_none());
+        // App icons in SVG render too.
+        let svg = t.path().join("i.svg");
+        std::fs::write(&svg, r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16" fill="#f00"/></svg>"##).unwrap();
+        let img = decode(&svg, 96).expect("svg rendered");
+        assert_eq!(img.size, [96, 96]);
+        assert!(img.pixels[96 * 48 + 48].r() > 200);
     }
 }
