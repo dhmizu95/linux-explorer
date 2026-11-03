@@ -57,7 +57,7 @@ pub fn title_bar(app: &mut App, ui: &mut Ui) {
     egui::Panel::top("titlebar")
         .exact_size(TAB_STRIP_H)
         .resizable(false)
-        .frame(Frame::new().fill(p.titlebar))
+        .frame(Frame::new().fill(p.titlebar).corner_radius(corners(app, ui.ctx(), Part::Title)))
         .show(ui, |ui| {
             let full = ui.max_rect();
             let custom = app.startup.custom_titlebar;
@@ -172,9 +172,55 @@ fn caption_buttons(ui: &mut Ui, full: Rect, p: &crate::theme::Palette) {
     }
 }
 
+// ponytail: Breeze's default window corner radius (Frame_FrameRadius x
+// smallSpacing); read it from the decoration if Breeze ever exposes it.
+const WINDOW_RADIUS: u8 = 6;
+
+/// Panels that can sit in a window corner.
+#[derive(Clone, Copy, PartialEq)]
+pub enum Part {
+    Title,
+    Status,
+    Nav,
+    Side,
+    Terminal,
+    Filter,
+    Central,
+}
+
+fn rounded(app: &App, ctx: &egui::Context) -> bool {
+    app.startup.custom_titlebar && !ctx.input(|i| i.viewport().maximized.unwrap_or(false) || i.viewport().fullscreen.unwrap_or(false))
+}
+
+/// Corner rounding for `part`'s frame, so the window gets rounded corners
+/// like system-decorated ones. Only the panel touching a corner rounds it.
+pub fn corners(app: &App, ctx: &egui::Context, part: Part) -> CornerRadius {
+    if !rounded(app, ctx) {
+        return CornerRadius::ZERO;
+    }
+    let s = &app.settings;
+    let center = if app.show_terminal {
+        Part::Terminal
+    } else if app.tab().name_filter.is_some() {
+        Part::Filter
+    } else {
+        Part::Central
+    };
+    let (bl, br) = if s.show_status_bar {
+        (Part::Status, Part::Status)
+    } else {
+        (
+            if s.show_nav_pane { Part::Nav } else { center },
+            if s.show_preview_pane || s.show_details_pane { Part::Side } else { center },
+        )
+    };
+    let r = |on: bool| if on { WINDOW_RADIUS } else { 0 };
+    CornerRadius { nw: r(part == Part::Title), ne: r(part == Part::Title), sw: r(part == bl), se: r(part == br) }
+}
+
 /// Window edge resize when we draw our own title bar.
 pub fn resize_handles(app: &mut App, ctx: &egui::Context) {
-    if !app.startup.custom_titlebar || ctx.input(|i| i.viewport().maximized.unwrap_or(false) || i.viewport().fullscreen.unwrap_or(false)) {
+    if !rounded(app, ctx) {
         return;
     }
     let r = ctx.content_rect();
@@ -183,7 +229,7 @@ pub fn resize_handles(app: &mut App, ctx: &egui::Context) {
     let edge = crate::theme::window_edge(app.palette.dark, focused);
     ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::unique("window_edge"))).rect_stroke(
         r,
-        CornerRadius::ZERO,
+        CornerRadius::same(WINDOW_RADIUS),
         Stroke::new(1.0, edge),
         egui::StrokeKind::Inside,
     );
@@ -961,7 +1007,7 @@ pub fn status_bar(app: &mut App, ui: &mut Ui) {
     egui::Panel::bottom("status")
         .exact_size(28.0)
         .resizable(false)
-        .frame(Frame::new().fill(p.content).inner_margin(Margin { left: 12, right: 8, top: 0, bottom: 0 }))
+        .frame(Frame::new().fill(p.content).corner_radius(corners(app, ui.ctx(), Part::Status)).inner_margin(Margin { left: 12, right: 8, top: 0, bottom: 0 }))
         .show(ui, |ui| {
             ui.horizontal_centered(|ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;

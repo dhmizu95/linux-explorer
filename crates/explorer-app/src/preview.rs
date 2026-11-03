@@ -21,7 +21,7 @@ pub fn side_pane(app: &mut App, ui: &mut Ui) {
         .resizable(true)
         .default_size(app.settings.preview_width)
         .size_range(200.0..=700.0)
-        .frame(Frame::new().fill(p.content).inner_margin(Margin::same(14)))
+        .frame(Frame::new().fill(p.content).corner_radius(crate::chrome::corners(app, ui.ctx(), crate::chrome::Part::Side)).inner_margin(Margin::same(14)))
         .show(ui, |ui| {
             let sel: Vec<Entry> = app.tab().selected_entries().into_iter().cloned().collect();
             if app.settings.show_preview_pane {

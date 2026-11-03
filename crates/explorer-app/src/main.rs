@@ -126,7 +126,8 @@ fn main() -> eframe::Result {
         .with_app_id("linux-explorer")
         .with_inner_size([w.max(640.0), h.max(400.0)])
         .with_min_inner_size([560.0, 360.0])
-        .with_decorations(!startup.custom_titlebar);
+        .with_decorations(!startup.custom_titlebar)
+        .with_transparent(startup.custom_titlebar);
     // Ctrl+C/X/V are handled in keys.rs so file paste works with a non-text clipboard.
     let options = eframe::NativeOptions { viewport, centered: true, clipboard_shortcuts: false, ..Default::default() };
     eframe::run_native("linux-explorer", options, Box::new(|cc| Ok(Box::new(app::App::new(cc, startup)))))

@@ -35,7 +35,7 @@ pub fn nav_pane(app: &mut App, ui: &mut Ui) {
         .resizable(true)
         .default_size(app.settings.nav_width)
         .size_range(150.0..=520.0)
-        .frame(Frame::new().fill(p.nav).inner_margin(Margin { left: 4, right: 4, top: 6, bottom: 6 }))
+        .frame(Frame::new().fill(p.nav).corner_radius(crate::chrome::corners(app, ui.ctx(), crate::chrome::Part::Nav)).inner_margin(Margin { left: 4, right: 4, top: 6, bottom: 6 }))
         .show(ui, |ui| {
             egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;

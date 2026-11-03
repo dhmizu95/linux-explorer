@@ -1280,6 +1280,11 @@ pub fn palette_for(t: Theme) -> Palette {
 }
 
 impl eframe::App for App {
+    /// Transparent so the window's rounded corners show the desktop behind.
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        [0.0; 4]
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.housekeeping(&ctx);
@@ -1313,8 +1318,10 @@ impl eframe::App for App {
 
         self.run_pending(&ctx);
         if ctx.input(|i| i.viewport().close_requested()) {
-            let r = ctx.input(|i| i.viewport().inner_rect);
-            if let Some(r) = r {
+            // content_rect, not viewport().inner_rect: Wayland never reports the latter.
+            let maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false) || i.viewport().fullscreen.unwrap_or(false));
+            if !maximized {
+                let r = ctx.content_rect();
                 self.settings.window_size = (r.width(), r.height());
             }
             self.settings.session = self.tabs.iter().filter_map(|t| t.loc.path().map(Path::to_path_buf)).collect();

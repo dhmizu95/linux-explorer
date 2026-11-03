@@ -41,7 +41,8 @@ pub fn geometry(ctx: &egui::Context) -> Geometry {
 
 pub fn central(app: &mut App, ui: &mut Ui) {
     let p = app.palette;
-    egui::CentralPanel::default().frame(Frame::new().fill(p.content)).show(ui, |ui| {
+    let cr = crate::chrome::corners(app, ui.ctx(), crate::chrome::Part::Central);
+    egui::CentralPanel::default().frame(Frame::new().fill(p.content).corner_radius(cr)).show(ui, |ui| {
         if app.second.is_none() {
             app.focus_second = false;
             pane(app, ui);
@@ -123,7 +124,7 @@ pub fn terminal_panel(app: &mut App, ui: &mut Ui) {
         .resizable(true)
         .default_size(230.0)
         .size_range(90.0..=900.0)
-        .frame(Frame::new().fill(p.content).inner_margin(Margin { left: 0, right: 0, top: 1, bottom: 0 }))
+        .frame(Frame::new().fill(p.content).corner_radius(crate::chrome::corners(app, ui.ctx(), crate::chrome::Part::Terminal)).inner_margin(Margin { left: 0, right: 0, top: 1, bottom: 0 }))
         .show(ui, |ui| {
             let r = ui.max_rect();
             ui.painter().line_segment([r.left_top(), r.right_top()], Stroke::new(1.0, p.border));
@@ -140,7 +141,7 @@ pub fn filter_bar(app: &mut App, ui: &mut Ui) {
     egui::Panel::bottom("le_filter_bar")
         .exact_size(40.0)
         .resizable(false)
-        .frame(Frame::new().fill(p.toolbar).inner_margin(Margin::symmetric(10, 4)))
+        .frame(Frame::new().fill(p.toolbar).corner_radius(crate::chrome::corners(app, ui.ctx(), crate::chrome::Part::Filter)).inner_margin(Margin::symmetric(10, 4)))
         .show(ui, |ui| {
             ui.horizontal_centered(|ui| {
                 ui.label(egui::RichText::new("Filter:").color(p.text_dim));
