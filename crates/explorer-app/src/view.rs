@@ -807,7 +807,7 @@ fn paint_item(app: &mut App, ui: &mut Ui, r: Rect, e: &Entry, mode: ViewMode, co
                     paint_icon(app, ui, ir, e, dim);
                     let tr = Rect::from_min_max(pos2(ir.right() + 8.0, r.top()), pos2(cell.right() - 6.0, r.bottom()));
                     if renaming {
-                        rename_editor(app, ui, tr.expand2(vec2(2.0, -3.0)), 1);
+                        rename_editor(app, ui, tr.expand2(vec2(2.0, -3.0)), false);
                     } else {
                         let g = widgets::truncated(ui, &name, font.clone(), text_col, tr.width());
                         ui.painter().galley(pos2(tr.left(), r.center().y - g.size().y / 2.0), g, text_col);
@@ -826,7 +826,7 @@ fn paint_item(app: &mut App, ui: &mut Ui, r: Rect, e: &Entry, mode: ViewMode, co
             paint_icon(app, ui, ir, e, dim);
             let tr = Rect::from_min_max(pos2(ir.right() + 6.0, r.top()), pos2(r.right() - 4.0, r.bottom()));
             if renaming {
-                rename_editor(app, ui, tr.shrink2(vec2(0.0, 2.0)), 1);
+                rename_editor(app, ui, tr.shrink2(vec2(0.0, 2.0)), false);
             } else {
                 let g = widgets::truncated(ui, &name, font, text_col, tr.width());
                 ui.painter().galley(pos2(tr.left(), r.center().y - g.size().y / 2.0), g, text_col);
@@ -838,7 +838,7 @@ fn paint_item(app: &mut App, ui: &mut Ui, r: Rect, e: &Entry, mode: ViewMode, co
             paint_icon(app, ui, ir, e, dim);
             let tr = Rect::from_min_max(pos2(r.left() + 4.0, ir.bottom() + 4.0), pos2(r.right() - 4.0, r.bottom() - 2.0));
             if renaming {
-                rename_editor(app, ui, Rect::from_min_size(tr.min, vec2(tr.width(), 22.0)), 1);
+                rename_editor(app, ui, Rect::from_min_size(tr.min, vec2(tr.width(), 22.0)), true);
             } else {
                 let rows = if selected { 4 } else { 2 };
                 let g = widgets::wrapped(ui, &name, font, text_col, tr.width(), rows, Align::Center);
@@ -855,7 +855,7 @@ fn paint_item(app: &mut App, ui: &mut Ui, r: Rect, e: &Entry, mode: ViewMode, co
             let right_w = if mode == ViewMode::Content { 260.0 } else { 0.0 };
             let tw = r.right() - tx - 8.0 - right_w;
             if renaming {
-                rename_editor(app, ui, Rect::from_min_size(pos2(tx, y - 2.0), vec2(tw, 22.0)), 1);
+                rename_editor(app, ui, Rect::from_min_size(pos2(tx, y - 2.0), vec2(tw, 22.0)), false);
             } else {
                 let g = widgets::truncated(ui, &name, font, text_col, tw);
                 ui.painter().galley(pos2(tx, y), g, text_col);
@@ -885,7 +885,7 @@ fn paint_item(app: &mut App, ui: &mut Ui, r: Rect, e: &Entry, mode: ViewMode, co
 }
 
 /// Inline rename text box with the name stem pre-selected (Explorer behaviour).
-fn rename_editor(app: &mut App, ui: &mut Ui, rect: Rect, _rows: usize) {
+fn rename_editor(app: &mut App, ui: &mut Ui, rect: Rect, center: bool) {
     let p = app.palette;
     let Some(rn) = app.tab_mut().rename.as_mut() else { return };
     let id = Id::unique(("le_rename", &rn.path));
@@ -893,7 +893,7 @@ fn rename_editor(app: &mut App, ui: &mut Ui, rect: Rect, _rows: usize) {
     ui.painter().rect_filled(rect, CornerRadius::same(2), p.field);
     ui.painter().rect_stroke(rect, CornerRadius::same(2), Stroke::new(1.0, p.accent), StrokeKind::Inside);
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(vec2(4.0, 1.0))).layout(egui::Layout::left_to_right(Align::Center)));
-    let out = egui::TextEdit::singleline(&mut text).id(id).frame(Frame::NONE).desired_width(rect.width() - 8.0).font(FontId::proportional(13.5)).show(&mut child);
+    let out = egui::TextEdit::singleline(&mut text).id(id).frame(Frame::NONE).desired_width(rect.width() - 8.0).font(FontId::proportional(13.5)).align(if center { egui::Align2::CENTER_CENTER } else { egui::Align2::LEFT_CENTER }).show(&mut child);
     let rn = app.tab_mut().rename.as_mut().unwrap();
     if !rn.started {
         rn.started = true;
