@@ -172,9 +172,8 @@ fn caption_buttons(ui: &mut Ui, full: Rect, p: &crate::theme::Palette) {
     }
 }
 
-// ponytail: Breeze's default window corner radius (Frame_FrameRadius x
-// smallSpacing); read it from the decoration if Breeze ever exposes it.
-const WINDOW_RADIUS: u8 = 6;
+/// Window corner radius, as in Windows 11.
+const WINDOW_RADIUS: u8 = 8;
 
 /// Panels that can sit in a window corner.
 #[derive(Clone, Copy, PartialEq)]
@@ -226,7 +225,7 @@ pub fn resize_handles(app: &mut App, ctx: &egui::Context) {
     let r = ctx.content_rect();
     // 1px outline so the window separates from others (most visible in dark mode).
     let focused = ctx.input(|i| i.viewport().focused.unwrap_or(true));
-    let edge = crate::theme::window_edge(app.palette.dark, focused);
+    let edge = crate::theme::window_edge(&app.palette, focused);
     ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::unique("window_edge"))).rect_stroke(
         r,
         CornerRadius::same(WINDOW_RADIUS),

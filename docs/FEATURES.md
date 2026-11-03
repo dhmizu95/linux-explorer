@@ -1,6 +1,6 @@
 # Linux Explorer — Feature Specification
 
-Goal: a file manager for Fedora and Ubuntu that **looks, behaves and feels like Windows 11 File Explorer**,
+Goal: a file manager for any Linux desktop that **looks, behaves and feels like Windows 11 File Explorer**,
 written in Rust.
 
 ## How the spec was derived (clean-room behavioural reverse engineering)

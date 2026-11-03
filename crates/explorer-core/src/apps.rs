@@ -393,12 +393,15 @@ pub fn ini_value(text: &str, group: &str, key: &str) -> Option<String> {
     None
 }
 
-// ponytail: reads KDE and GTK3 config files only; GNOME's dconf setting is
-// not read (defaults to Adwaita, which is GNOME's default anyway).
+/// The desktop's icon theme from the config files desktops write
+/// (KDE, then GTK 4/3 as used by GNOME, XFCE, Cinnamon, MATE...).
+// ponytail: GNOME's dconf-only setting is not read; Adwaita (its default) is the fallback.
 fn user_icon_theme() -> Option<String> {
     let cfg = config_home();
     let read = |f: &str, g: &str, k: &str| fs::read_to_string(cfg.join(f)).ok().and_then(|t| ini_value(&t, g, k));
-    read("kdeglobals", "Icons", "Theme").or_else(|| read("gtk-3.0/settings.ini", "Settings", "gtk-icon-theme-name"))
+    read("kdeglobals", "Icons", "Theme")
+        .or_else(|| read("gtk-4.0/settings.ini", "Settings", "gtk-icon-theme-name"))
+        .or_else(|| read("gtk-3.0/settings.ini", "Settings", "gtk-icon-theme-name"))
 }
 
 /// Directories of `theme` and every theme it inherits from, hicolor last.

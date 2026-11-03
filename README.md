@@ -2,7 +2,7 @@
 
 # Linux Explorer
 
-A file manager for **Fedora and Ubuntu** that looks and behaves like **Windows 11 File Explorer**, written in Rust
+A file manager for **any Linux desktop** (GNOME, KDE, XFCE, Cinnamon, ...) that looks and behaves like **Windows 11 File Explorer**, written in Rust
 ([egui](https://github.com/emilk/egui) + a UI-free core library).
 
 On top of the Explorer feel it adds Dolphin's power features: split view, an embedded terminal, a filter bar,
@@ -45,7 +45,7 @@ The build needs no `-dev` packages: X11, Wayland and EGL are loaded at runtime.
 | Terminal | Built-in PTY terminal panel |
 | Recycle Bin | freedesktop Trash spec (`trash` crate) |
 
-It talks to two standard system services that every Fedora/Ubuntu desktop runs: UDisks2 (drives)
+It talks to two standard system services that every mainstream Linux desktop runs: UDisks2 (drives)
 and the desktop portal (dark mode). "Retry as administrator" uses polkit's `pkexec`, the
 operating system's own privilege prompt; nothing else can grant root rights.
 
