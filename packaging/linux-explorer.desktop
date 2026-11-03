@@ -1,0 +1,26 @@
+[Desktop Entry]
+Type=Application
+Name=Linux Explorer
+GenericName=File Manager
+Comment=Browse files and folders with a Windows Explorer style interface
+Exec=linux-explorer %U
+Icon=linux-explorer
+Terminal=false
+Categories=System;FileTools;FileManager;Utility;Core;GTK;
+MimeType=inode/directory;
+Keywords=files;folders;explorer;file manager;browser;
+StartupNotify=true
+StartupWMClass=linux-explorer
+Actions=new-window;this-pc;recycle-bin;
+
+[Desktop Action new-window]
+Name=New Window
+Exec=linux-explorer
+
+[Desktop Action this-pc]
+Name=This PC
+Exec=linux-explorer thispc
+
+[Desktop Action recycle-bin]
+Name=Recycle Bin
+Exec=linux-explorer trash

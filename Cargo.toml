@@ -1,0 +1,27 @@
+[workspace]
+resolver = "2"
+members = ["crates/explorer-core", "crates/explorer-app"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://example.invalid/linux-explorer"
+rust-version = "1.95"
+
+[workspace.dependencies]
+explorer-core = { path = "crates/explorer-core" }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+libc = "0.2"
+trash = "5"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp", "ico"] }
+tempfile = "3"
+eframe = { version = "0.37", default-features = false, features = ["glow", "wayland", "x11", "default_fonts", "accesskit"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+strip = true

@@ -1,0 +1,70 @@
+﻿Window [window] name='uia_probe - File Explorer' aid='' cls='CabinetWClass' rect=-9,-9,1938x1038
+  Pane [pane] name='' aid='' cls='TITLE_BAR_SCAFFOLDING_WINDOW_CLASS' rect=360,-9,1560x47
+  Pane [pane] name='uia_probe' aid='' cls='ShellTabWindowClass' rect=0,161,1920x859
+    Pane [pane] name='' aid='' cls='DUIViewWndClassName' rect=0,161,1920x859
+      StatusBar [status bar] name='Status bar' aid='StatusBarModuleInner' cls='StatusBarModuleInner' rect=0,989,1920x31
+        Group [group] name='Property Field' aid='System.StatusBarViewItemCount' cls='Element' rect=9,989,64x31
+          Text [text] name='2 items' aid='PropertyValue' cls='MetadataLabel' rect=15,989,52x31
+        Group [group] name='Property Field' aid='System.StatusIcons' cls='Element' rect=82,989,122x31
+          Text [text] name='State:' aid='PropertyLabel' cls='MetadataLabel' rect=88,989,41x31
+          Edit [edit] name='State' aid='PreviewMetadataControlReadOnly' cls='MetadataDisplayElement' rect=129,989,69x31
+        Group [group] name='View Modes' aid='ViewButtonsGroup' cls='SelectorNoDefault' rect=1853,989,62x31
+          RadioButton [radio button] name='Details' aid='ViewMode_Details' cls='SelectorButton' rect=1853,989,31x31
+          RadioButton [radio button] name='Large Icons' aid='ViewMode_LargeIcons' cls='SelectorButton' rect=1884,989,31x31
+      Pane [pane] name='Control Host' aid='ProperTreeHost' cls='ProperTreeHost' rect=3,161,287x828
+        Pane [pane] name='Navigation Pane' aid='100' cls='SysTreeView32' rect=3,161,287x828
+      Pane [pane] name='Shell Folder View' aid='listview' cls='DUIListView' rect=295,161,1625x828
+        List [list] name='Items View' aid='' cls='UIItemsView' rect=295,161,1625x828
+          Header [header] name='Header' aid='' cls='UIViewHeader' rect=295,161,1625x32
+            SplitButton [split button] name='Name' aid='System.ItemNameDisplay' cls='UIColumnHeader' rect=295,161,340x32
+              Button [button] name='Filter dropdown' aid='DropDown' cls='Button' rect=615,161,19x32
+            SplitButton [split button] name='Date modified' aid='System.DateModified' cls='UIColumnHeader' rect=635,161,180x32
+              Button [button] name='Filter dropdown' aid='DropDown' cls='Button' rect=795,161,19x32
+            SplitButton [split button] name='Type' aid='System.ItemTypeText' cls='UIColumnHeader' rect=815,161,150x32
+              Button [button] name='Filter dropdown' aid='DropDown' cls='Button' rect=945,161,19x32
+            SplitButton [split button] name='Size' aid='System.Size' cls='UIColumnHeader' rect=965,161,100x32
+              Button [button] name='Filter dropdown' aid='DropDown' cls='Button' rect=1045,161,19x32
+          ListItem [list item] name='Sub Folder' aid='0' cls='UIItem' rect=313,201,747x31
+            Edit [edit] name='Name' aid='System.ItemNameDisplay' cls='UIProperty' rect=341,205,294x24
+            Edit [edit] name='Date modified' aid='System.DateModified' cls='UIProperty' rect=635,205,180x24
+            Edit [edit] name='Type' aid='System.ItemTypeText' cls='UIProperty' rect=815,205,150x24
+            Edit [edit] name='Size' aid='System.Size' cls='UIProperty' rect=965,205,100x24
+          ListItem [list item] name='sample.txt' aid='1' cls='UIItem' rect=313,238,747x31
+            Edit [edit] name='Name' aid='System.ItemNameDisplay' cls='UIProperty' rect=341,242,294x24
+            Edit [edit] name='Date modified' aid='System.DateModified' cls='UIProperty' rect=635,242,180x24
+            Edit [edit] name='Type' aid='System.ItemTypeText' cls='UIProperty' rect=815,242,150x24
+            Edit [edit] name='Size' aid='System.Size' cls='UIProperty' rect=965,242,100x24
+  Pane [pane] name='' aid='' cls='Microsoft.UI.Content.DesktopChildSiteBridge' rect=0,-6,1920x167
+    Pane [pane] name='' aid='' cls='InputSiteWindowClass' rect=0,-6,1920x167
+      Tab [tab] name='' aid='TabView' cls='Microsoft.UI.Xaml.Controls.TabView' rect=0,-6,1920x48
+        List [list] name='' aid='TabListView' cls='ListView' rect=3,-6,313x48
+          TabItem [tab item] name='uia_probe' aid='' cls='ListViewItem' rect=6,2,310x40
+            Image [image] name='' aid='' cls='Image' rect=21,12,20x20
+            Text [text] name='uia_probe' aid='' cls='TextBlock' rect=53,12,68x19
+            Button [button] name='Close Tab' aid='CloseButton' cls='Button' rect=266,7,40x30
+        Button [button] name='Add New Tab' aid='AddButton' cls='Button' rect=320,8,40x30
+      Group [group] name='' aid='PART_AutoSuggestBox' cls='AutoSuggestBox' rect=252,52,1165x40
+        Edit [edit] name='Address Bar' aid='TextBox' cls='TextBox' rect=252,52,1165x40
+      SplitButton [split button] name='This PC' aid='FirstCrumbStackPanel' cls='FileExplorerExtensions.FirstCrumbStackPanelControl' rect=269,57,64x30
+        Image [image] name='' aid='' cls='Image' rect=269,62,20x20
+      Group [group] name='' aid='PART_BreadcrumbBar' cls='LandmarkTarget' rect=333,57,1049x30
+        SplitButton [split button] name='This PC' aid='' cls='FileExplorerExtensions.BreadcrumbBarItemControl' rect=333,57,108x30
+          Text [text] name='This PC' aid='' cls='TextBlock' rect=344,58,57x24
+        SplitButton [split button] name='Local Disk (C:)' aid='' cls='FileExplorerExtensions.BreadcrumbBarItemControl' rect=441,57,159x30
+          Text [text] name='Local Disk (C:)' aid='' cls='TextBlock' rect=452,58,108x24
+        SplitButton [split button] name='Users' aid='' cls='FileExplorerExtensions.BreadcrumbBarItemControl' rect=600,57,93x30
+          Text [text] name='Users' aid='' cls='TextBlock' rect=611,58,43x24
+        SplitButton [split button] name='User' aid='' cls='FileExplorerExtensions.BreadcrumbBarItemControl' rect=693,57,86x30
+          Text [text] name='User' aid='' cls='TextBlock' rect=705,58,35x24
+        SplitButton [split button] name='AppData' aid='' cls='FileExplorerExtensions.BreadcrumbBarItemControl' rect=780,57,118x30
+          Text [text] name='AppData' aid='' cls='TextBlock' rect=791,58,68x24
+        SplitButton [split button] name='Local' aid='' cls='FileExplorerExtensions.BreadcrumbBarItemControl' rect=898,57,91x30
+          Text [text] name='Local' aid='' cls='TextBlock' rect=910,58,40x24
+        SplitButton [split button] name='Temp' aid='' cls='FileExplorerExtensions.BreadcrumbBarItemControl' rect=990,57,93x30
+          Text [text] name='Temp' aid='' cls='TextBlock' rect=1000,58,42x24
+        SplitButton [split button] name='uia_probe' aid='' cls='FileExplorerExtensions.BreadcrumbBarItemControl' rect=1083,57,128x30
+          Text [text] name='uia_probe' aid='' cls='TextBlock' rect=1094,58,77x24
+      Group [group] name='' aid='FileExplorerSearchBox' cls='AutoSuggestBox' rect=1427,52,479x41
+        Edit [edit] name=' Search uia_probe' aid='TextBox' cls='TextBox' rect=1427,52,479x41
+          Text [text] name=' Search uia_probe' aid='' cls='TextBlock' rect=1440,59,138x24
+
