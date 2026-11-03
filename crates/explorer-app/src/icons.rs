@@ -57,9 +57,10 @@ enum Badge {
 
 fn folder(p: &Painter, r: Rect, badge: Option<Badge>) {
     let s = r.width();
-    let back = c(0xE8A93A);
-    let front_top = c(0xFFD86B);
-    let front = c(0xF7C548);
+    // Mint-Y Blue (Nemo / Linux Mint) folder colours.
+    let back = c(0x5883B8);
+    let front_top = c(0x7AAEEB);
+    let front = c(0x5294E2);
     let rad = (s * 0.06).max(1.0) as u8;
     // Back panel with tab.
     let top = r.top() + s * 0.16;
@@ -70,7 +71,7 @@ fn folder(p: &Painter, r: Rect, badge: Option<Badge>) {
     // Paper peeking out on larger sizes.
     if s >= 40.0 {
         let paper = Rect::from_min_max(pos2(body.left() + s * 0.08, body.top() + s * 0.05), pos2(body.right() - s * 0.08, body.bottom()));
-        p.rect_filled(paper, CornerRadius::same(rad), Color32::from_rgb(0xFA, 0xFA, 0xFA));
+        p.rect_filled(paper, CornerRadius::same(rad), c(0xD6E0D9));
     }
     // Front panel.
     let front_r = Rect::from_min_max(pos2(r.left() + s * 0.04, top + s * 0.22), pos2(r.right() - s * 0.04, r.bottom() - s * 0.12));
@@ -86,14 +87,16 @@ fn folder(p: &Painter, r: Rect, badge: Option<Badge>) {
 fn badge_glyph(p: &Painter, r: Rect, b: Badge) {
     let s = r.width();
     let w = (s * 0.12).max(1.2);
+    // One dark-blue ink on the blue folder, Mint-Y style.
+    let ink = c(0x234E80);
     match b {
         Badge::Desktop => {
             let scr = Rect::from_min_max(r.min + vec2(0.0, s * 0.05), pos2(r.right(), r.top() + s * 0.7));
-            p.rect_filled(scr, CornerRadius::same(1), c(0x2B7BD6));
-            p.line_segment([pos2(r.center().x, scr.bottom()), pos2(r.center().x, r.bottom() - s * 0.05)], Stroke::new(w, c(0x2B7BD6)));
+            p.rect_filled(scr, CornerRadius::same(1), ink);
+            p.line_segment([pos2(r.center().x, scr.bottom()), pos2(r.center().x, r.bottom() - s * 0.05)], Stroke::new(w, ink));
         }
         Badge::Down => {
-            let col = c(0x1E8E3E);
+            let col = ink;
             p.line_segment([pos2(r.center().x, r.top()), pos2(r.center().x, r.bottom() - s * 0.2)], Stroke::new(w * 1.4, col));
             p.add(Shape::convex_polygon(
                 vec![pos2(r.left() + s * 0.1, r.center().y), pos2(r.right() - s * 0.1, r.center().y), pos2(r.center().x, r.bottom() - s * 0.05)],
@@ -106,27 +109,27 @@ fn badge_glyph(p: &Painter, r: Rect, b: Badge) {
             p.rect_filled(page, CornerRadius::same(1), Color32::WHITE);
             for i in 0..3 {
                 let y = page.top() + page.height() * (0.3 + 0.2 * i as f32);
-                p.line_segment([pos2(page.left() + s * 0.1, y), pos2(page.right() - s * 0.1, y)], Stroke::new(w * 0.6, c(0x2B7BD6)));
+                p.line_segment([pos2(page.left() + s * 0.1, y), pos2(page.right() - s * 0.1, y)], Stroke::new(w * 0.6, ink));
             }
         }
         Badge::Picture => {
             let fr = Rect::from_center_size(r.center(), vec2(s, s * 0.75));
-            p.rect_filled(fr, CornerRadius::same(1), c(0x3D8EE0));
+            p.rect_filled(fr, CornerRadius::same(1), ink);
             p.add(Shape::convex_polygon(
                 vec![pos2(fr.left(), fr.bottom()), pos2(fr.left() + fr.width() * 0.4, fr.top() + fr.height() * 0.4), pos2(fr.left() + fr.width() * 0.8, fr.bottom())],
-                c(0x2E9E4B),
+                c(0xD6E0D9),
                 Stroke::NONE,
             ));
-            p.circle_filled(pos2(fr.right() - s * 0.2, fr.top() + s * 0.2), s * 0.1, c(0xFFE16B));
+            p.circle_filled(pos2(fr.right() - s * 0.2, fr.top() + s * 0.2), s * 0.1, c(0xD6E0D9));
         }
         Badge::Note => {
-            let col = c(0xE0447C);
+            let col = ink;
             p.circle_filled(pos2(r.left() + s * 0.3, r.bottom() - s * 0.15), s * 0.15, col);
             p.line_segment([pos2(r.left() + s * 0.43, r.bottom() - s * 0.15), pos2(r.left() + s * 0.43, r.top())], Stroke::new(w, col));
             p.line_segment([pos2(r.left() + s * 0.43, r.top()), pos2(r.right() - s * 0.05, r.top() + s * 0.2)], Stroke::new(w * 1.4, col));
         }
         Badge::Play => {
-            let col = c(0x8A4DD6);
+            let col = ink;
             p.add(Shape::convex_polygon(
                 vec![pos2(r.left() + s * 0.2, r.top()), pos2(r.right() - s * 0.05, r.center().y), pos2(r.left() + s * 0.2, r.bottom())],
                 col,

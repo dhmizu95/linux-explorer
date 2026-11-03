@@ -1,28 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
-  <!-- Original artwork: folder with a terminal prompt (Linux) on the front panel. -->
+  <!-- Original artwork: folder with a terminal prompt, in Mint-Y Blue (Nemo) folder colours. -->
   <defs>
     <linearGradient id="back" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#D98E1F"/>
-      <stop offset="1" stop-color="#B8720F"/>
+      <stop offset="0" stop-color="#5883B8"/>
+      <stop offset="1" stop-color="#4E77AA"/>
     </linearGradient>
     <linearGradient id="front" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#FFD15C"/>
-      <stop offset="1" stop-color="#F2A93B"/>
-    </linearGradient>
-    <linearGradient id="badge" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#2B6CDF"/>
-      <stop offset="1" stop-color="#1745A8"/>
+      <stop offset="0" stop-color="#7AAEEB"/>
+      <stop offset="1" stop-color="#5294E2"/>
     </linearGradient>
   </defs>
-  <!-- back panel with tab -->
   <path d="M10 30a8 8 0 0 1 8-8h28l10 10h54a8 8 0 0 1 8 8v66a8 8 0 0 1-8 8H18a8 8 0 0 1-8-8z" fill="url(#back)"/>
-  <!-- paper -->
-  <rect x="20" y="38" width="88" height="56" rx="4" fill="#F4F6FA"/>
-  <!-- front panel -->
+  <rect x="20" y="38" width="88" height="56" rx="4" fill="#D6E0D9"/>
   <path d="M10 54a8 8 0 0 1 8-8h92a8 8 0 0 1 8 8v52a8 8 0 0 1-8 8H18a8 8 0 0 1-8-8z" fill="url(#front)"/>
-  <rect x="10" y="46" width="108" height="3" rx="1.5" fill="#FFE59A"/>
-  <!-- terminal badge -->
-  <rect x="38" y="60" width="52" height="40" rx="9" fill="url(#badge)"/>
+  <rect x="10" y="46" width="108" height="3" rx="1.5" fill="#A3C7F2"/>
+  <rect x="38" y="60" width="52" height="40" rx="9" fill="#2F343F"/>
   <path d="M50 72l10 8-10 8" fill="none" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
-  <line x1="65" y1="89" x2="78" y2="89" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round"/>
+  <line x1="65" y1="89" x2="78" y2="89" stroke="#7AAEEB" stroke-width="5" stroke-linecap="round"/>
 </svg>
