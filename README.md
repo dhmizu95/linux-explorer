@@ -1,3 +1,5 @@
+<p align="center"><img src="packaging/linux-explorer.svg" width="128" alt="Linux Explorer logo"></p>
+
 # Linux Explorer
 
 A file manager for **Fedora and Ubuntu** that looks and behaves like **Windows 11 File Explorer**, written in Rust
