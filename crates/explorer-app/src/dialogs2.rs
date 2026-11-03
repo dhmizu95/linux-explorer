@@ -40,14 +40,6 @@ impl BatchRename {
     }
 }
 
-#[derive(Default)]
-pub struct Credentials {
-    pub uri: String,
-    pub user: String,
-    pub domain: String,
-    pub password: String,
-}
-
 pub struct AdminPrompt {
     pub message: String,
     pub cmd: Cmd,
@@ -148,48 +140,6 @@ pub fn batch_rename(app: &mut App, ctx: &egui::Context) {
         },
         Some(false) => {}
         None => app.dialogs.batch = Some(d),
-    }
-}
-
-pub fn credentials(app: &mut App, ctx: &egui::Context) {
-    let Some(mut c) = app.dialogs.credentials.take() else { return };
-    let mut result: Option<bool> = None;
-    egui::Modal::new(Id::unique("le_creds")).frame(modal_frame(ctx)).show(ctx, |ui| {
-        ui.set_width(400.0);
-        ui.label(RichText::new("Enter network credentials").size(17.0));
-        ui.label(RichText::new(&c.uri).color(app.palette.text_dim));
-        ui.add_space(10.0);
-        egui::Grid::new("le_creds_grid").num_columns(2).spacing(vec2(10.0, 8.0)).show(ui, |ui| {
-            ui.label("User name:");
-            ui.add(egui::TextEdit::singleline(&mut c.user).desired_width(240.0));
-            ui.end_row();
-            ui.label("Domain:");
-            ui.add(egui::TextEdit::singleline(&mut c.domain).hint_text("WORKGROUP").desired_width(240.0));
-            ui.end_row();
-            ui.label("Password:");
-            let r = ui.add(egui::TextEdit::singleline(&mut c.password).password(true).desired_width(240.0));
-            if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                result = Some(true);
-            }
-            ui.end_row();
-        });
-        ui.add_space(10.0);
-        buttons(ui, |ui| {
-            if ui.button("Cancel").clicked() {
-                result = Some(false);
-            }
-            if primary(ui, app, "Connect", true) {
-                result = Some(true);
-            }
-        });
-    });
-    match result {
-        Some(true) => {
-            let creds = (c.user.clone(), c.domain.clone(), c.password.clone());
-            app.cmd(Cmd::ConnectUri(c.uri.clone(), Some(creds)));
-        }
-        Some(false) => {}
-        None => app.dialogs.credentials = Some(c),
     }
 }
 

@@ -1200,10 +1200,7 @@ fn this_pc_page(app: &mut App, ui: &mut Ui) {
                     ui.horizontal_wrapped(|ui| {
                         ui.spacing_mut().item_spacing = vec2(8.0, 8.0);
                         for v in vols {
-                            let sub = match v.kind {
-                                explorer_core::devices::VolumeKind::Phone => "Phone or camera · click to open".to_string(),
-                                _ => format!("{} {} · click to mount", format::size_human(v.size), v.fs_type),
-                            };
+                            let sub = format!("{} {} · click to mount", format::size_human(v.size), v.fs_type);
                             let icon = Icon::Drive { removable: v.removable, system: false };
                             let resp = tile(ui, app, vec2(300.0, 64.0), icon, &v.label, &sub, Id::unique(("vol", &v.id)));
                             if resp.clicked() {
@@ -1243,7 +1240,7 @@ fn network_page(app: &mut App, ui: &mut Ui) {
         ui.horizontal(|ui| {
             ui.add(egui::TextEdit::singleline(&mut uri).hint_text("smb://server/share").desired_width(360.0));
             if ui.button("Connect").clicked() && !uri.is_empty() {
-                app.cmd(Cmd::ConnectUri(uri.trim().to_string(), None));
+                app.cmd(Cmd::ConnectUri(uri.trim().to_string()));
             }
         });
         ui.ctx().data_mut(|d| d.insert_temp(id, uri));

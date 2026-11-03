@@ -20,6 +20,9 @@ serde_json.workspace = true
 arboard = { version = "3", default-features = false, features = ["wayland-data-control"] }
 vt100 = "0.18"
 md5 = "0.8"
+ttf-parser.workspace = true
+hayro.workspace = true
+zbus.workspace = true
 libc.workspace = true
 
 [dev-dependencies]

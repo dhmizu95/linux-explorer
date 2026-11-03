@@ -1,10 +1,9 @@
 //! "Compress to ZIP file" and "Extract All".
 
 use std::fs::{self, File};
-use std::io::{self, Read, Write};
+use std::io::{self, BufReader, Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use zip::write::SimpleFileOptions;
 
@@ -61,7 +60,7 @@ fn add_to_zip(zip: &mut zip::ZipWriter<File>, base: &Path, p: &Path) -> io::Resu
 
 pub fn is_archive(p: &Path) -> bool {
     let n = p.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
-    [".zip", ".tar", ".tar.gz", ".tgz", ".tar.xz", ".txz", ".tar.bz2", ".tbz2", ".tar.zst", ".7z", ".rar"]
+    [".zip", ".tar", ".tar.gz", ".tgz", ".tar.xz", ".txz", ".tar.bz2", ".tbz2", ".tar.zst", ".7z", ".gz", ".bz2", ".xz", ".zst"]
         .iter()
         .any(|s| n.ends_with(s))
 }
@@ -71,7 +70,7 @@ pub fn default_extract_dir(archive: &Path) -> PathBuf {
     let dir = archive.parent().unwrap_or(Path::new("/"));
     let name = archive.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let lower = name.to_lowercase();
-    let stem_len = [".tar.gz", ".tar.xz", ".tar.bz2", ".tar.zst", ".tgz", ".txz", ".tbz2", ".zip", ".tar", ".7z", ".rar"]
+    let stem_len = [".tar.gz", ".tar.xz", ".tar.bz2", ".tar.zst", ".tgz", ".txz", ".tbz2", ".zip", ".tar", ".7z", ".rar", ".gz", ".bz2", ".xz", ".zst"]
         .iter()
         .find(|s| lower.ends_with(*s))
         .map(|s| name.len() - s.len())
@@ -79,33 +78,62 @@ pub fn default_extract_dir(archive: &Path) -> PathBuf {
     crate::names::unique_new_name(dir, &name[..stem_len], None)
 }
 
-/// Extract into `dest` (created). Zip is native; others use `tar`, `7z` or `unrar`.
+/// Extract into `dest` (created). Everything is decoded in-process: zip, tar
+/// (plain, .gz, .bz2, .xz, .zst), single compressed files and 7z.
 pub fn extract(archive: &Path, dest: &Path) -> io::Result<()> {
     fs::create_dir_all(dest)?;
     let lower = archive.to_string_lossy().to_lowercase();
+    let open = || -> io::Result<BufReader<File>> { Ok(BufReader::new(File::open(archive)?)) };
     if lower.ends_with(".zip") {
-        let f = File::open(archive)?;
-        let mut z = zip::ZipArchive::new(f).map_err(io::Error::other)?;
+        let mut z = zip::ZipArchive::new(File::open(archive)?).map_err(io::Error::other)?;
         // ZipArchive::extract rejects path traversal ("zip slip").
         return z.extract(dest).map_err(io::Error::other);
     }
-    let status = if lower.ends_with(".7z") || lower.ends_with(".rar") {
-        let seven = ["7z", "7za", "7zz"].into_iter().find(|p| crate::apps::which(p).is_some());
-        match seven {
-            Some(p) => Command::new(p).arg("x").arg(format!("-o{}", dest.display())).arg("-y").arg(archive).status(),
-            None if lower.ends_with(".rar") && crate::apps::which("unrar").is_some() => {
-                Command::new("unrar").arg("x").arg("-o+").arg(archive).arg(dest).status()
-            }
-            None => return Err(io::Error::other("Install p7zip (7z) to extract this archive.")),
-        }
-    } else {
-        Command::new("tar").arg("-xf").arg(archive).arg("-C").arg(dest).status()
-    }?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(io::Error::other(format!("extraction failed ({status})")))
+    if lower.ends_with(".7z") {
+        return sevenz_rust2::decompress_file(archive, dest).map_err(io::Error::other);
     }
+    if lower.ends_with(".rar") {
+        return Err(io::Error::other("RAR archives are not supported (there is no open-source RAR decoder for Rust)."));
+    }
+    let decoded: Box<dyn Read> = if lower.ends_with(".tar") {
+        Box::new(open()?)
+    } else if lower.ends_with(".gz") || lower.ends_with(".tgz") {
+        Box::new(flate2::read::MultiGzDecoder::new(open()?))
+    } else if lower.ends_with(".bz2") || lower.ends_with(".tbz2") {
+        Box::new(bzip2::read::MultiBzDecoder::new(open()?))
+    } else if lower.ends_with(".zst") {
+        Box::new(ruzstd::decoding::StreamingDecoder::new(open()?).map_err(io::Error::other)?)
+    } else if lower.ends_with(".xz") || lower.ends_with(".txz") {
+        // lzma-rs decodes into a writer; spool to a temp file to bound memory.
+        let mut tmp = tempfile_in(dest)?;
+        lzma_rs::xz_decompress(&mut open()?, &mut tmp.1).map_err(|e| io::Error::other(format!("{e:?}")))?;
+        tmp.1.flush()?;
+        let f = File::open(&tmp.0)?;
+        let _ = fs::remove_file(&tmp.0);
+        Box::new(BufReader::new(f))
+    } else {
+        return Err(io::Error::other("Unknown archive type."));
+    };
+    let is_tar = lower.contains(".tar.") || lower.ends_with(".tar") || [".tgz", ".tbz2", ".txz"].iter().any(|s| lower.ends_with(s));
+    if is_tar {
+        let mut a = tar::Archive::new(decoded);
+        a.set_preserve_permissions(true);
+        a.set_preserve_mtime(true);
+        // `unpack` refuses entries that escape `dest` ("..", absolute paths).
+        a.unpack(dest)
+    } else {
+        // A single compressed file: notes.txt.gz -> notes.txt
+        let name = archive.file_name().unwrap_or_default().to_string_lossy().into_owned();
+        let inner = name.rsplit_once('.').map(|(s, _)| s.to_string()).unwrap_or(name);
+        let mut out = File::create(dest.join(inner))?;
+        io::copy(&mut { decoded }, &mut out)?;
+        Ok(())
+    }
+}
+
+fn tempfile_in(dir: &Path) -> io::Result<(PathBuf, File)> {
+    let p = dir.join(format!(".le-extract-{}.tmp", std::process::id()));
+    Ok((p.clone(), File::create(p)?))
 }
 
 /// Open an archive "as a folder" (Explorer's zip folders, Dolphin's archive
@@ -178,26 +206,60 @@ mod tests {
     }
 
     #[test]
-    fn tar_extract_via_system_tar() {
+    fn tar_family_and_7z_without_external_tools() {
         let t = tempfile::tempdir().unwrap();
-        fs::create_dir(t.path().join("in")).unwrap();
-        fs::write(t.path().join("in/x.txt"), b"tar!").unwrap();
-        let ok = Command::new("tar")
-            .arg("-czf")
-            .arg(t.path().join("a.tar.gz"))
-            .arg("-C")
-            .arg(t.path().join("in"))
-            .arg("x.txt")
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false);
-        if !ok {
-            return; // tar not installed in this environment
+        // Build a tar in memory with one file.
+        let mut raw = Vec::new();
+        {
+            let mut b = tar::Builder::new(&mut raw);
+            let data = b"tar!";
+            let mut h = tar::Header::new_gnu();
+            h.set_size(data.len() as u64);
+            h.set_mode(0o644);
+            h.set_cksum();
+            b.append_data(&mut h, "dir/x.txt", &data[..]).unwrap();
+            b.finish().unwrap();
         }
-        let a = t.path().join("a.tar.gz");
-        let out = default_extract_dir(&a);
-        assert_eq!(out.file_name().unwrap(), "a");
-        extract(&a, &out).unwrap();
-        assert_eq!(fs::read(out.join("x.txt")).unwrap(), b"tar!");
+        let gz = {
+            let mut e = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+            e.write_all(&raw).unwrap();
+            e.finish().unwrap()
+        };
+        let bz = {
+            let mut e = bzip2::write::BzEncoder::new(Vec::new(), bzip2::Compression::default());
+            e.write_all(&raw).unwrap();
+            e.finish().unwrap()
+        };
+        let mut xz = Vec::new();
+        lzma_rs::xz_compress(&mut &raw[..], &mut xz).unwrap();
+        let zst = ruzstd::encoding::compress_to_vec(&raw[..], ruzstd::encoding::CompressionLevel::Fastest);
+        for (name, bytes) in [("a.tar", raw.clone()), ("a.tar.gz", gz.clone()), ("a.tar.bz2", bz), ("a.tar.xz", xz), ("a.tar.zst", zst)] {
+            let p = t.path().join(name);
+            fs::write(&p, bytes).unwrap();
+            assert!(is_archive(&p));
+            let out = t.path().join(format!("out-{name}"));
+            extract(&p, &out).unwrap_or_else(|e| panic!("{name}: {e}"));
+            assert_eq!(fs::read(out.join("dir/x.txt")).unwrap(), b"tar!", "{name}");
+        }
+        // A single gzip-compressed file.
+        let single = {
+            let mut e = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+            e.write_all(b"plain").unwrap();
+            e.finish().unwrap()
+        };
+        fs::write(t.path().join("notes.txt.gz"), single).unwrap();
+        extract(&t.path().join("notes.txt.gz"), &t.path().join("single")).unwrap();
+        assert_eq!(fs::read(t.path().join("single/notes.txt")).unwrap(), b"plain");
+        // 7z round trip.
+        let src = t.path().join("seven");
+        fs::create_dir(&src).unwrap();
+        fs::write(src.join("s.txt"), b"7z!").unwrap();
+        let a7 = t.path().join("a.7z");
+        sevenz_rust2::compress_to_path(&src, &a7).unwrap();
+        extract(&a7, &t.path().join("out7")).unwrap();
+        assert_eq!(fs::read(t.path().join("out7/s.txt")).unwrap(), b"7z!");
+        // RAR is reported, not silently ignored.
+        fs::write(t.path().join("x.rar"), b"Rar!").unwrap();
+        assert!(extract(&t.path().join("x.rar"), &t.path().join("outr")).is_err());
     }
 }

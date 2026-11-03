@@ -181,7 +181,7 @@ fn renders_every_surface() {
     let work = root.path().join("demo");
     fs::create_dir_all(work.join("Folder")).unwrap();
     let mut names = vec!["a.txt", "b.png", "c.pdf", "d.zip", "e.mp3", "f.mp4", "g.rs", "h.xlsx", "Ünïcødé Ελληνικά Кириллица.txt"];
-    if crate::theme::font_for_lang("zh-cn").is_some() {
+    if crate::fonts::any_font_has('名') {
         names.push("名前 이름.txt");
     }
     for n in names {
@@ -255,9 +255,7 @@ fn renders_every_surface() {
     h.state_mut().dialogs.batch = Some(crate::dialogs::BatchRename::new(two));
     h.run_steps(2);
     h.state_mut().dialogs.batch = None;
-    h.state_mut().dialogs.credentials = Some(crate::dialogs::Credentials { uri: "smb://nas/share".into(), ..Default::default() });
     h.run_steps(2);
-    h.state_mut().dialogs.credentials = None;
     h.state_mut().dialogs.admin = Some(crate::dialogs::AdminPrompt { message: "Need admin".into(), cmd: Cmd::Refresh });
     h.run_steps(2);
     h.state_mut().dialogs.admin = None;

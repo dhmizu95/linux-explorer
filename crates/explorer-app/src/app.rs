@@ -16,7 +16,7 @@ use explorer_core::places::{self, Drive};
 use explorer_core::settings::{LaunchTo, Settings, Theme, ViewMode};
 use explorer_core::sorting::SortKey;
 use explorer_core::undo::{Action, UndoStack};
-use explorer_core::{archive, terminal, trashbin};
+use explorer_core::{archive, trashbin};
 
 use crate::dialogs::{ConfirmAction, Dialogs};
 use crate::tab::{RenameState, Tab};
@@ -133,7 +133,7 @@ pub enum Cmd {
     ExpandFocused(bool),
     BatchRename,
     MountVolume(explorer_core::devices::Volume),
-    ConnectUri(String, Option<(String, String, String)>),
+    ConnectUri(String),
     AdminRetry { kind: OpKind, sources: Vec<PathBuf>, dest: Option<PathBuf> },
     RunService(explorer_core::servicemenus::ServiceAction, Vec<PathBuf>),
     Duplicate,
@@ -203,8 +203,7 @@ impl App {
     pub fn new(cc: &eframe::CreationContext<'_>, startup: StartupOptions) -> App {
         let ctx = cc.egui_ctx.clone();
         let _ = REPAINT.set(ctx.clone());
-        theme::install_system_font(&ctx);
-        theme::install_fallback_fonts(&ctx);
+        theme::install_fonts(&ctx);
         let mut settings = Settings::load();
         settings.seed_pins();
         if let Some(t) = startup.theme {
@@ -328,8 +327,7 @@ impl App {
     pub fn volumes(&mut self) -> Vec<explorer_core::devices::Volume> {
         if self.volumes_at.elapsed() > Duration::from_secs(5) {
             self.volumes_at = Instant::now();
-            let mut v = explorer_core::devices::unmounted_block_volumes();
-            v.extend(explorer_core::devices::phone_volumes());
+            let v = explorer_core::devices::unmounted_block_volumes();
             self.volumes = v;
         }
         self.volumes.clone()
@@ -646,8 +644,17 @@ impl App {
             }
             Cmd::Options => self.dialogs.options = Some(self.settings.clone()),
             Cmd::OpenTerminal(p) => {
-                if let Err(e) = terminal::open_in(&p) {
-                    self.error("Open in Terminal", e);
+                // Built-in terminal panel; no external terminal program needed.
+                self.show_terminal = true;
+                match self.terminal.as_mut().filter(|t| t.alive()) {
+                    Some(t) => t.cd(&p),
+                    None => match crate::term::Terminal::spawn(&p, 12, 100) {
+                        Ok(t) => self.terminal = Some(t),
+                        Err(e) => {
+                            self.show_terminal = false;
+                            self.error("Terminal", e);
+                        }
+                    },
                 }
             }
             Cmd::TogglePin(p) => {
@@ -795,16 +802,13 @@ impl App {
             }
             Cmd::EmptyBin => self.dialogs.confirm_action(ConfirmAction::EmptyBin),
             Cmd::Mount(d, eject) => {
-                let argv: Vec<String> = if eject {
-                    vec!["udisksctl".into(), "power-off".into(), "-b".into(), d.device.clone()]
-                } else {
-                    vec!["udisksctl".into(), "unmount".into(), "-b".into(), d.device.clone()]
-                };
-                let out = std::process::Command::new(&argv[0]).args(&argv[1..]).output();
-                match out {
-                    Ok(o) if o.status.success() => self.notify(format!("{} can now be safely removed", d.label)),
-                    Ok(o) => self.error("Eject", String::from_utf8_lossy(&o.stderr).into_owned()),
-                    Err(e) => self.error("Eject", format!("udisksctl: {e}")),
+                // Leave the folder first so the drive is not busy.
+                if self.current_dir().is_some_and(|c| c.starts_with(&d.mount_point)) {
+                    self.tab_mut().go(Location::ThisPc, &s);
+                }
+                match explorer_core::devices::unmount(&d.device, eject) {
+                    Ok(()) => self.notify(format!("{} can now be safely removed", d.label)),
+                    Err(e) => self.error(if eject { "Eject" } else { "Unmount" }, e),
                 }
                 self.drives = places::drives();
             }
@@ -888,16 +892,16 @@ impl App {
                 }
                 Err(e) => self.error(&format!("Mount {}", v.label), e),
             },
-            Cmd::ConnectUri(uri, creds) => {
-                let c = creds.as_ref().map(|(u, d, p)| (u.as_str(), d.as_str(), p.as_str()));
-                match explorer_core::devices::mount_uri(&uri, c) {
-                    Ok(p) => self.tab_mut().go(Location::Path(p), &s),
-                    Err(e) if creds.is_none() && explorer_core::devices::needs_password(&e) => {
-                        self.dialogs.credentials = Some(crate::dialogs::Credentials { uri, ..Default::default() });
-                    }
-                    Err(e) => self.error("Connect to server", e),
-                }
-            }
+            Cmd::ConnectUri(uri) => match places::find_network_mount(&uri) {
+                Some(p) => self.tab_mut().go(Location::Path(p), &s),
+                None => self.error(
+                    "Network location",
+                    format!(
+                        "{uri} is not connected.\n\nConnect to it once with your desktop's file manager or online-accounts settings; \
+                         connected shares then appear under Network here."
+                    ),
+                ),
+            },
             Cmd::AdminRetry { kind, sources, dest } => {
                 match explorer_core::admin::run(kind, &sources, dest.as_deref()) {
                     Ok(()) => self.notify("Done with administrator permission"),

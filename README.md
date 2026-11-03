@@ -28,18 +28,29 @@ sudo ./packaging/install.sh --system
 
 The build needs no `-dev` packages: X11, Wayland and EGL are loaded at runtime.
 
-Optional runtime helpers, used when present:
+**No third-party command-line tools are used.** Everything is done in-process in Rust:
 
-| Feature | Tool | Fedora | Ubuntu |
-|---|---|---|---|
-| Clipboard sharing with Nautilus/Dolphin | `wl-copy`/`wl-paste` or `xclip` | `wl-clipboard` | `wl-clipboard` |
-| Unmount / eject drives | `udisksctl` | `udisks2` | `udisks2` |
-| Network shares | `gio` | `glib2` | `libglib2.0-bin` |
-| Extract .7z / .rar | `7z` | `p7zip` | `p7zip-full` |
-| Open in Terminal | ptyxis, gnome-terminal, konsole, … | preinstalled | preinstalled |
-| Video / PDF thumbnails | `ffmpegthumbnailer`, `pdftoppm` | `ffmpegthumbnailer`, `poppler-utils` | `ffmpegthumbnailer`, `poppler-utils` |
-| Mount drives, phones | `udisksctl`, `gio` + gvfs-mtp | `udisks2`, `gvfs-mtp` | `udisks2`, `gvfs-backends` |
-| Admin retry | `pkexec` | `polkit` | `pkexec` |
+| Feature | How |
+|---|---|
+| Archives (zip, tar, .gz, .bz2, .xz, .zst, 7z) | `zip`, `tar`, `flate2`, `bzip2`, `lzma-rs`, `ruzstd`, `sevenz-rust2` crates |
+| Clipboard sharing with Nautilus/Dolphin | Owns the X11/XWayland CLIPBOARD selection itself (`x11rb`) |
+| PDF thumbnails | Rendered with `hayro` (pure-Rust PDF renderer) |
+| Video thumbnails | Read from the shared freedesktop thumbnail cache |
+| Drives: list, mount, unmount, eject | UDisks2 D-Bus API (`zbus`) |
+| Dark mode | XDG desktop portal over D-Bus, GTK/KDE config files |
+| Fonts | Font folders scanned and character maps read with `ttf-parser` |
+| Git status badges | `gix` (gitoxide) |
+| Terminal | Built-in PTY terminal panel |
+| Recycle Bin | freedesktop Trash spec (`trash` crate) |
+
+It talks to two standard system services that every Fedora/Ubuntu desktop runs: UDisks2 (drives)
+and the desktop portal (dark mode). "Retry as administrator" uses polkit's `pkexec`, the
+operating system's own privilege prompt; nothing else can grant root rights.
+
+Not done in-process:
+- **RAR** archives: there is no open-source RAR decoder for Rust.
+- **Connecting** to network shares: smb/sftp shares your desktop has mounted appear under Network,
+  and typing their `smb://` / `sftp://` address opens them.
 
 ### Packages
 

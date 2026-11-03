@@ -13,6 +13,15 @@ serde_json.workspace = true
 libc.workspace = true
 trash.workspace = true
 zip.workspace = true
+tar.workspace = true
+flate2.workspace = true
+bzip2.workspace = true
+lzma-rs.workspace = true
+ruzstd.workspace = true
+sevenz-rust2.workspace = true
+zbus.workspace = true
+x11rb.workspace = true
+gix.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

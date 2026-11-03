@@ -17,7 +17,7 @@ use explorer_core::settings::{LaunchTo, Settings, Theme};
 
 use crate::app::{App, Cmd};
 use crate::icons::{self, Icon};
-pub use crate::dialogs2::{AdminPrompt, BatchRename, Credentials};
+pub use crate::dialogs2::{AdminPrompt, BatchRename};
 
 #[derive(Clone, Debug)]
 pub enum ConfirmAction {
@@ -66,7 +66,6 @@ pub struct Dialogs {
     pub error: Option<(String, String)>,
     pub open_with: Option<OpenWith>,
     pub batch: Option<BatchRename>,
-    pub credentials: Option<Credentials>,
     pub admin: Option<AdminPrompt>,
     pub shortcuts: bool,
     next_id: u64,
@@ -82,7 +81,6 @@ impl Dialogs {
             || self.error.is_some()
             || self.open_with.is_some()
             || self.batch.is_some()
-            || self.credentials.is_some()
             || self.admin.is_some()
     }
 
@@ -135,7 +133,6 @@ pub fn show_all(app: &mut App, ctx: &egui::Context) {
     confirm(app, ctx);
     open_with(app, ctx);
     crate::dialogs2::batch_rename(app, ctx);
-    crate::dialogs2::credentials(app, ctx);
     crate::dialogs2::admin(app, ctx);
     crate::dialogs2::shortcuts(app, ctx);
     error(app, ctx);

@@ -77,33 +77,52 @@ impl Palette {
     }
 }
 
-/// Is the desktop in dark mode? GNOME/GTK settings, then KDE.
+/// Is the desktop in dark mode? Asked in-process: the XDG desktop portal
+/// (GNOME, KDE, others) over D-Bus, then GTK and KDE config files.
 pub fn system_prefers_dark() -> bool {
     if let Ok(t) = std::env::var("GTK_THEME") {
         return t.to_lowercase().contains("dark");
     }
-    let gs = std::process::Command::new("gsettings")
-        .args(["get", "org.gnome.desktop.interface", "color-scheme"])
-        .output();
-    if let Ok(o) = gs {
-        if o.status.success() {
-            let s = String::from_utf8_lossy(&o.stdout);
-            if s.contains("dark") {
-                return true;
-            }
-            if s.contains("light") || s.contains("default") {
-                return false;
+    if let Some(v) = portal_color_scheme() {
+        return v == 1; // 1 = prefer dark, 2 = prefer light
+    }
+    let cfg = explorer_core::places::config_home();
+    for f in ["gtk-4.0/settings.ini", "gtk-3.0/settings.ini"] {
+        if let Ok(t) = std::fs::read_to_string(cfg.join(f)) {
+            for line in t.lines() {
+                let l = line.replace(' ', "").to_lowercase();
+                if l == "gtk-application-prefer-dark-theme=1" || l == "gtk-application-prefer-dark-theme=true" {
+                    return true;
+                }
+                if l.starts_with("gtk-theme-name=") && l.contains("dark") {
+                    return true;
+                }
             }
         }
     }
-    let kde = explorer_core::places::config_home().join("kdeglobals");
-    if let Ok(t) = std::fs::read_to_string(kde) {
+    if let Ok(t) = std::fs::read_to_string(cfg.join("kdeglobals")) {
         if let Some(line) = t.lines().find(|l| l.starts_with("ColorScheme=")) {
             return line.to_lowercase().contains("dark");
         }
     }
     false
 }
+
+fn portal_color_scheme() -> Option<u32> {
+    use zbus::zvariant::{OwnedValue, Value};
+    let conn = zbus::blocking::Connection::session().ok()?;
+    let proxy = zbus::blocking::Proxy::new(&conn, "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop", "org.freedesktop.portal.Settings").ok()?;
+    let read = |method: &str| -> Option<u32> {
+        let v: OwnedValue = proxy.call(method, &("org.freedesktop.appearance", "color-scheme")).ok()?;
+        // Older portals wrap the value in one more variant.
+        match &*v {
+            Value::Value(inner) => u32::try_from(&**inner).ok(),
+            other => u32::try_from(other).ok(),
+        }
+    };
+    read("ReadOne").or_else(|| read("Read"))
+}
+
 
 pub fn apply(ctx: &egui::Context, p: &Palette) {
     ctx.all_styles_mut(|style| {
@@ -165,88 +184,24 @@ pub fn apply(ctx: &egui::Context, p: &Palette) {
     });
 }
 
-/// First installed font file covering `lang`, via fontconfig.
-pub fn font_for_lang(lang: &str) -> Option<std::path::PathBuf> {
-    let o = std::process::Command::new("fc-list").args([format!(":lang={lang}"), "file".into()]).output().ok()?;
-    let text = String::from_utf8_lossy(&o.stdout);
-    let mut files: Vec<&str> = text.lines().map(|l| l.trim().trim_end_matches(':')).filter(|l| !l.is_empty()).collect();
-    // Prefer regular sans faces over bold/serif/mono variants.
-    files.sort_by_key(|f| {
-        let l = f.to_lowercase();
-        (["bold", "black", "serif", "mono", "italic", "light", "thin"].iter().filter(|w| l.contains(*w)).count(), l.len())
-    });
-    files.first().map(|f| f.into())
-}
-
-/// Fallback fonts so file names in any script render instead of boxes.
-pub fn install_fallback_fonts(ctx: &egui::Context) {
-    let mut seen = std::collections::HashSet::new();
-    let mut files: Vec<std::path::PathBuf> = ["zh-cn", "ja", "ko", "ar", "he", "hi", "th"].iter().filter_map(|l| font_for_lang(l)).collect();
-    files.extend(
-        ["/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf"].map(std::path::PathBuf::from),
-    );
-    // Symbols the UI itself draws as text (rating stars, check marks, arrows).
-    for cp in ["2605", "2714", "2192", "25cf"] {
-        if let Ok(o) = std::process::Command::new("fc-list").args([format!(":charset={cp}"), "file".into()]).output() {
-            if let Some(f) = String::from_utf8_lossy(&o.stdout).lines().map(|l| l.trim().trim_end_matches(':')).find(|l| !l.is_empty()) {
-                files.push(f.into());
-            }
-        }
+fn add_font(ctx: &egui::Context, name: &str, path: &std::path::Path, priority: egui::epaint::text::FontPriority, mono_too: bool) {
+    let Ok(bytes) = std::fs::read(path) else { return };
+    let mut families = vec![egui::epaint::text::InsertFontFamily { family: FontFamily::Proportional, priority }];
+    if mono_too {
+        families.push(egui::epaint::text::InsertFontFamily { family: FontFamily::Monospace, priority });
     }
-    for (i, f) in files.into_iter().enumerate() {
-        if !seen.insert(f.clone()) {
-            continue;
-        }
-        let Ok(bytes) = std::fs::read(&f) else { continue };
-        ctx.add_font(egui::epaint::text::FontInsert::new(
-            &format!("fallback-{i}"),
-            egui::FontData::from_owned(bytes),
-            vec![
-                egui::epaint::text::InsertFontFamily { family: FontFamily::Proportional, priority: egui::epaint::text::FontPriority::Lowest },
-                egui::epaint::text::InsertFontFamily { family: FontFamily::Monospace, priority: egui::epaint::text::FontPriority::Lowest },
-            ],
-        ));
-    }
+    ctx.add_font(egui::epaint::text::FontInsert::new(name, egui::FontData::from_owned(bytes), families));
 }
 
 /// Use the desktop's UI font (Ubuntu Sans on Ubuntu, Adwaita/Noto/Cantarell on
-/// Fedora) so text looks native; egui's bundled fonts stay as fallback.
-pub fn install_system_font(ctx: &egui::Context) {
-    let mut candidates: Vec<std::path::PathBuf> = Vec::new();
-    if let Ok(o) = std::process::Command::new("fc-match").args(["-f", "%{file}", "sans-serif:weight=regular"]).output() {
-        let f = String::from_utf8_lossy(&o.stdout).to_string();
-        if !f.is_empty() {
-            candidates.push(f.into());
-        }
+/// Fedora) plus fallbacks so file names in any script render instead of boxes.
+/// egui's bundled fonts stay as the last resort.
+pub fn install_fonts(ctx: &egui::Context) {
+    let (primary, fallbacks) = crate::fonts::discover();
+    if let Some(p) = primary {
+        add_font(ctx, "system-ui", &p, egui::epaint::text::FontPriority::Highest, false);
     }
-    for p in [
-        "/usr/share/fonts/truetype/ubuntu/UbuntuSans[wdth,wght].ttf",
-        "/usr/share/fonts/adwaita-sans-fonts/AdwaitaSans-Regular.ttf",
-        "/usr/share/fonts/google-noto-vf/NotoSans[wght].ttf",
-        "/usr/share/fonts/google-noto/NotoSans-Regular.ttf",
-        "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
-        "/usr/share/fonts/cantarell/Cantarell-VF.otf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf",
-    ] {
-        candidates.push(p.into());
-    }
-    for c in candidates {
-        let lower = c.to_string_lossy().to_lowercase();
-        // Variable/bold/italic faces can render heavy; prefer regular files.
-        if lower.contains("bold") || lower.contains("italic") || lower.contains("mono") {
-            continue;
-        }
-        if let Ok(bytes) = std::fs::read(&c) {
-            ctx.add_font(egui::epaint::text::FontInsert::new(
-                "system-ui",
-                egui::FontData::from_owned(bytes),
-                vec![egui::epaint::text::InsertFontFamily {
-                    family: FontFamily::Proportional,
-                    priority: egui::epaint::text::FontPriority::Highest,
-                }],
-            ));
-            return;
-        }
+    for (i, f) in fallbacks.iter().enumerate() {
+        add_font(ctx, &format!("fallback-{i}"), f, egui::epaint::text::FontPriority::Lowest, true);
     }
 }

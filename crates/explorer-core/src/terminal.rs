@@ -1,8 +1,8 @@
-//! "Open in Terminal": find the user's terminal emulator.
+//! Terminal emulator for desktop entries marked `Terminal=true` (the app the
+//! user launches needs one). Linux Explorer itself uses its built-in panel.
 
-use std::path::Path;
 
-use crate::apps::{spawn_detached, which};
+use crate::apps::which;
 
 /// Terminal programs and the flag that sets the working directory
 /// (None = rely on the process cwd).
@@ -29,20 +29,6 @@ pub fn detect() -> Option<&'static str> {
         }
     }
     TERMINALS.iter().find(|(n, _)| which(n).is_some()).map(|(n, _)| *n)
-}
-
-pub fn open_in(dir: &Path) -> Result<(), String> {
-    let Some(name) = detect() else {
-        return Err("No terminal emulator found. Install gnome-terminal, konsole or xterm.".into());
-    };
-    let flag = TERMINALS.iter().find(|(n, _)| *n == name).and_then(|(_, f)| *f);
-    let mut argv = vec![name.to_string()];
-    if name == "wezterm" {
-        argv.extend(["start".into(), "--cwd".into(), dir.to_string_lossy().into_owned()]);
-    } else if let Some(f) = flag {
-        argv.push(format!("{f}{}", dir.display()));
-    }
-    spawn_detached(&argv, Some(dir))
 }
 
 /// For desktop entries with Terminal=true.

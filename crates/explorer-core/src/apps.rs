@@ -290,13 +290,6 @@ pub fn open_default(path: &Path) -> Result<(), String> {
             return Ok(());
         }
     }
-    for opener in [&["xdg-open"][..], &["gio", "open"][..]] {
-        let mut argv: Vec<String> = opener.iter().map(|s| s.to_string()).collect();
-        argv.push(path.to_string_lossy().into_owned());
-        if spawn_detached(&argv, path.parent()).is_ok() {
-            return Ok(());
-        }
-    }
     Err(format!("There is no app associated with this file ({mime})."))
 }
 

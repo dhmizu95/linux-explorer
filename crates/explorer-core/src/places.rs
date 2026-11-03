@@ -331,11 +331,52 @@ fn xml_unescape(s: &str) -> String {
     s.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&apos;", "'")
 }
 
-/// GVfs network mounts (smb://, sftp://) appear under /run/user/$UID/gvfs.
+/// Network shares the desktop already mounted: GNOME GVfs
+/// (`/run/user/$UID/gvfs/smb-share:server=…`) and KDE kio-fuse.
 pub fn network_mounts() -> Vec<PathBuf> {
     let uid = unsafe { libc::getuid() };
-    let dir = PathBuf::from(format!("/run/user/{uid}/gvfs"));
-    fs::read_dir(dir).map(|rd| rd.flatten().map(|e| e.path()).collect()).unwrap_or_default()
+    let run = PathBuf::from(format!("/run/user/{uid}"));
+    let mut v: Vec<PathBuf> = fs::read_dir(run.join("gvfs")).map(|rd| rd.flatten().map(|e| e.path()).collect()).unwrap_or_default();
+    if let Ok(rd) = fs::read_dir(&run) {
+        for e in rd.flatten().filter(|e| e.file_name().to_string_lossy().starts_with("kio-fuse")) {
+            for proto in fs::read_dir(e.path()).into_iter().flatten().flatten() {
+                v.extend(fs::read_dir(proto.path()).into_iter().flatten().flatten().map(|h| h.path()));
+            }
+        }
+    }
+    v
+}
+
+/// Mounted location for `smb://host/share/dir`-style URIs, if the desktop has it mounted.
+pub fn find_network_mount(uri: &str) -> Option<PathBuf> {
+    let (scheme, rest) = uri.split_once("://")?;
+    let rest = rest.split_once('@').map(|x| x.1).unwrap_or(rest);
+    let mut parts = rest.split('/').filter(|p| !p.is_empty());
+    let host = parts.next()?.split(':').next()?.to_lowercase();
+    let share = if scheme == "smb" { parts.next().map(str::to_lowercase) } else { None };
+    let tail: Vec<&str> = parts.collect();
+    network_mounts().into_iter().find_map(|m| {
+        let name = m.file_name()?.to_string_lossy().to_lowercase();
+        let host_ok = name.contains(&format!("server={host}")) || name.contains(&format!("host={host}")) || name == host;
+        let share_ok = share.as_ref().is_none_or(|s| name.contains(&format!("share={s}")) || m.join(s).is_dir());
+        if !(host_ok && share_ok) {
+            return None;
+        }
+        let mut p = m.clone();
+        if name == host {
+            if let Some(s) = &share {
+                p.push(s);
+            }
+        }
+        for t in &tail {
+            p.push(percent_decode_component(t));
+        }
+        Some(p)
+    })
+}
+
+fn percent_decode_component(s: &str) -> String {
+    crate::location::percent_decode(s)
 }
 
 #[cfg(test)]
@@ -382,5 +423,14 @@ mod tests {
     #[test]
     fn udev_label_unescape() {
         assert_eq!(unescape_hex("My\\x20Disk"), "My Disk");
+    }
+}
+
+#[cfg(test)]
+mod network_tests {
+    #[test]
+    fn network_uri_without_mount_is_none() {
+        assert_eq!(super::find_network_mount("smb://no-such-host-le/share"), None);
+        assert_eq!(super::find_network_mount("not a uri"), None);
     }
 }

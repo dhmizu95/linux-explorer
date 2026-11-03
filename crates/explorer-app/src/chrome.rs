@@ -518,7 +518,7 @@ fn address_edit(app: &mut App, ui: &mut Ui, rect: Rect) {
         let raw = text.trim().to_string();
         if explorer_core::devices::is_network_uri(&raw) {
             // smb://, sftp://, ftp://, dav://, mtp:// go through GVfs.
-            app.cmd(Cmd::ConnectUri(raw, None));
+            app.cmd(Cmd::ConnectUri(raw));
             return;
         }
         match location::parse_address(&raw, cwd.as_deref()) {

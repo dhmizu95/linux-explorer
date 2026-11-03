@@ -36,7 +36,7 @@ Legend: ✅ implemented & tested · 🟡 partial · ⬜ not yet
 | 1.7 | Preview pane (Alt+P): images, text/code, folder summary | — | ✅ |
 | 1.8 | Details pane (Alt+Shift+P): icon, name, type, size, dates, attributes | — | ✅ |
 | 1.9 | Status bar: "N items", "M items selected  X MB", view toggles bottom-right | — | ✅ |
-| 1.10 | Light / Dark theme following the system, Win11 palette (accent blue, `#CCE8FF` selection) | `gsettings color-scheme` / `GTK_THEME` | ✅ |
+| 1.10 | Light / Dark theme following the system, Win11 palette (accent blue, `#CCE8FF` selection) | XDG desktop portal (D-Bus), GTK/KDE config | ✅ |
 | 1.11 | Compact view (reduced row spacing) | — | ✅ |
 | 1.12 | Window title = current folder name; remembers window size | — | ✅ |
 | 1.13 | Mica/acrylic translucency | compositor-dependent | ⬜ |
@@ -83,7 +83,7 @@ Legend: ✅ implemented & tested · 🟡 partial · ⬜ not yet
 | 4.2 | New ▸ Text Document / empty file / templates from `~/Templates` | XDG_TEMPLATES_DIR | ✅ |
 | 4.3 | Rename inline with validation (empty, `/`, duplicates) and extension-change warning | — | ✅ |
 | 4.4 | Cut / Copy / Paste, paste into selected folder, "- Copy" naming when pasting into same folder | — | ✅ |
-| 4.5 | System clipboard interop with Nautilus/Dolphin/Nemo | `x-special/gnome-copied-files`, `text/uri-list` via `wl-copy`/`xclip` | ✅ |
+| 4.5 | System clipboard interop with Nautilus/Dolphin/Nemo | `x-special/gnome-copied-files`, `text/uri-list` served in-process on the X11/XWayland clipboard | ✅ |
 | 4.6 | Delete → Recycle Bin (no prompt, Win11 default) ; Shift+Delete → permanent delete with confirmation | XDG Trash (`trash` crate) | ✅ |
 | 4.7 | Background copy/move/delete with progress dialog: % bar, items, bytes, speed, current file, Pause / Cancel | worker threads | ✅ |
 | 4.8 | Conflict dialog "Replace or Skip Files": Replace, Skip, Keep both, "Do this for all conflicts" | — | ✅ |
@@ -92,20 +92,20 @@ Legend: ✅ implemented & tested · 🟡 partial · ⬜ not yet
 | 4.11 | Drag & drop inside the window (onto folders, nav pane, breadcrumb, tabs); Ctrl = copy, Shift = move; default move on same FS, copy across FS | — | ✅ |
 | 4.12 | Drop files from other apps into the window | winit file-drop (X11/XWayland; winit has no Wayland file drop yet) | 🟡 |
 | 4.13 | Drag files out to other apps | needs XDND/Wayland DnD source | ⬜ |
-| 4.14 | Compress to ZIP file; Extract All (zip native, tar.* via `tar`) | — | ✅ |
+| 4.14 | Compress to ZIP file; Extract All (zip, tar.*, .gz/.bz2/.xz/.zst, 7z — all in-process) | — | ✅ |
 | 4.15 | Create shortcut | symlink | ✅ |
 
 ## 5. Open / integration
 | # | Feature | Linux mapping | Status |
 |---|---|---|---|
-| 5.1 | Double-click opens with default app | `mimeapps.list` + `.desktop`, fallback `xdg-open` / `gio open` | ✅ |
+| 5.1 | Double-click opens with default app | `mimeapps.list` + `.desktop` parsed in-process; Open with dialog when nothing is associated | ✅ |
 | 5.2 | Open with ▸ list of apps for the MIME type, "Choose another app" | `/usr/share/applications`, `~/.local/share/applications`, `mimeinfo.cache` | ✅ |
 | 5.3 | Run executables / scripts (asks before executing) | exec bit | ✅ |
-| 5.4 | Open in Terminal | ptyxis, gnome-terminal, kgx, konsole, xfce4-terminal, tilix, alacritty, kitty, wezterm, xterm | ✅ |
+| 5.4 | Open in Terminal | Built-in terminal panel (no external terminal needed) | ✅ |
 | 5.5 | Pin to / Unpin from Quick access | own JSON + GTK bookmarks import | ✅ |
 | 5.6 | Recent files on Home | `~/.local/share/recently-used.xbel` | ✅ |
-| 5.7 | Unmount / eject removable drives from This PC and the nav pane | `udisksctl` | 🟡 (unmounted volumes are not listed for mounting yet) |
-| 5.8 | Network locations (SMB/SFTP URIs) | gvfs mounts under `/run/user/$UID/gvfs` listed; connect via `gio mount` | 🟡 |
+| 5.7 | Unmount / eject removable drives from This PC and the nav pane | UDisks2 over D-Bus | 🟡 (unmounted volumes are not listed for mounting yet) |
+| 5.8 | Network locations (SMB/SFTP URIs) | Shares mounted by the desktop (GVfs, kio-fuse) are listed and openable by URI; connecting new ones is left to the desktop | 🟡 |
 | 5.9 | Auto-refresh when folder changes on disk | stat polling (1 s) | ✅ |
 | 5.10 | Set as default file manager | `.desktop` with `inode/directory` MIME | ✅ |
 | 5.11 | Shell extensions / context-menu handlers from other apps | — | ⬜ |
@@ -148,20 +148,20 @@ freedesktop/Linux equivalents so they work on GNOME (Fedora/Ubuntu default) too.
 | # | Dolphin feature | How it works here | Status |
 |---|---|---|---|
 | 9.1 | Split view (Dolphin F3) | Two panes, each with its own location strip; click a pane to make it active; copy/drag between panes. Ctrl+Shift+S (F3 stays Explorer's search) | ✅ |
-| 9.2 | Embedded terminal panel (Dolphin F4) | Real PTY running `$SHELL` with 256-colour VT rendering (`vt100`), scrollback, resize, Ctrl+Shift+C/V, follows the current folder. Ctrl+` | ✅ |
+| 9.2 | Embedded terminal panel (Dolphin F4); also used for "Open in Terminal" | Real PTY running `$SHELL` with 256-colour VT rendering (`vt100`), scrollback, resize, Ctrl+Shift+C/V, follows the current folder. Ctrl+` | ✅ |
 | 9.3 | Filter bar (Ctrl+I) | Name filter with substring or `*`/`?` wildcards, Esc closes | ✅ |
 | 9.4 | Expandable folders in Details view | Chevron per folder, → / ← on the keyboard, unlimited depth | ✅ |
 | 9.5 | Batch rename (F2 on several items) | Numbered pattern (`Holiday ###`), find & replace, change case; live preview, collision check, swap-safe, one Ctrl+Z undoes all | ✅ |
 | 9.6 | Folder item counts in Size column | "N items", cached per load | ✅ |
-| 9.7 | Video & PDF thumbnails | Shared freedesktop thumbnail cache first, then `ffmpegthumbnailer` / `pdftoppm` | ✅ (tools optional) |
-| 9.8 | Mount unmounted devices | This PC → "Other devices": partitions from `lsblk`, mounted with `udisksctl`; phones/cameras (MTP/PTP) via `gio mount` | ✅ |
-| 9.9 | Archives as folders | Double-click .zip/.tar.*/.7z/.rar opens a cached extracted copy (read-only snapshot) | ✅ |
-| 9.10 | Network protocols (KIO smb/sftp/ftp/webdav/mtp) | Type `smb://`, `sftp://`, `ftp://`, `dav://` in the address bar or Network page → GVfs (`gio mount`), credential dialog when asked | ✅ (needs gvfs) |
-| 9.11 | Admin mode (kio-admin) | "Access denied" on copy/move/delete/rename offers **Continue** with administrator rights via polkit (`pkexec`) | ✅ |
+| 9.7 | Video & PDF thumbnails | PDF first page rendered in-process (hayro); videos from the shared freedesktop thumbnail cache | ✅ PDF · 🟡 video (cache only) |
+| 9.8 | Mount unmounted devices | This PC → "Other devices" via the UDisks2 D-Bus API (in-process, no tools); unmount and eject the same way | ✅ (phones over MTP: only when the desktop mounted them) |
+| 9.9 | Archives as folders | Double-click .zip/.tar.*/.7z/.gz/.xz/.zst opens a cached extracted copy, decoded in-process (RAR not supported) | ✅ |
+| 9.10 | Network protocols (KIO smb/sftp/ftp/webdav/mtp) | Shares the desktop has mounted (GVfs, KDE kio-fuse) are listed under Network and opened by typing their `smb://` / `sftp://` address; connecting new ones is left to the desktop | 🟡 |
+| 9.11 | Admin mode (kio-admin) | "Access denied" on copy/move/delete/rename offers **Continue** with administrator rights via polkit (`pkexec`, the OS privilege prompt) | ✅ |
 | 9.12 | Tags, ratings, comments | Same xattrs as Dolphin/Baloo (`user.xdg.tags`, `user.baloo.rating`, `user.xdg.comment`): edit in the Details pane, show as columns, search with `tag:` / `rating:` | ✅ |
 | 9.13 | Content search | `content:"text"` scans text files (no index) | 🟡 (Baloo-style indexing not included) |
 | 9.14 | Service menus | Dolphin `kio/servicemenus/*.desktop` and Nautilus scripts appear under **More actions** in the context menu | ✅ |
-| 9.15 | Git plugin | Status badges on files/folders and a Git status column | ✅ |
+| 9.15 | Git plugin | Status badges and a Git status column, read in-process with gitoxide | ✅ |
 | 9.16 | Column chooser | Right-click the header: Date created/accessed, Owner, Group, Permissions, Tags, Rating, Comment, Git | ✅ |
 | 9.17 | Configurable toolbar | Options → Command bar buttons | ✅ |
 | 9.18 | Configurable shortcuts | Read-only reference (F1); remapping not implemented | 🟡 |
@@ -170,3 +170,11 @@ freedesktop/Linux equivalents so they work on GNOME (Fedora/Ubuntu default) too.
 | 9.21 | Duplicate here, Show hidden (Ctrl+H, Alt+.) | Context menu / shortcuts | ✅ |
 | 9.22 | Drag files out to other applications | winit (the windowing library) has no drag-source support on Linux; use Copy/Paste, which is shared with other file managers | ⬜ not possible with current toolkit |
 | 9.23 | KDE Activities | Plasma-only concept | ⬜ not applicable |
+
+## 10. No third-party tools
+
+Linux Explorer runs no external command-line programs for its own features. Archives, clipboard,
+PDF thumbnails, fonts, dark mode, drives and Git are handled in-process (see README). The only
+processes it starts are the ones you ask for: apps that open your files, your shell in the terminal
+panel, scripts from service menus, and polkit's `pkexec` when you choose "Continue" on an
+administrator prompt.
