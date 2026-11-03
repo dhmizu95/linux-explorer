@@ -205,3 +205,27 @@ pub fn install_fonts(ctx: &egui::Context) {
         add_font(ctx, &format!("fallback-{i}"), f, egui::epaint::text::FontPriority::Lowest, true);
     }
 }
+
+/// Window outline the way KDE's Breeze decoration draws it: the title bar
+/// colour mixed toward the text colour by `frameContrast`. Read from
+/// kdeglobals when its scheme matches our light/dark mode, else Breeze defaults.
+pub fn window_edge(dark: bool, focused: bool) -> Color32 {
+    use explorer_core::apps::ini_value;
+    use std::sync::OnceLock;
+    static KDE: OnceLock<Option<String>> = OnceLock::new();
+    let kde = KDE.get_or_init(|| std::fs::read_to_string(explorer_core::places::config_home().join("kdeglobals")).ok());
+    let rgb = |g: &str, k: &str| -> Option<[f32; 3]> {
+        let v = ini_value(kde.as_deref()?, g, k)?;
+        let c: Vec<f32> = v.split(',').filter_map(|s| s.trim().parse().ok()).collect();
+        (c.len() >= 3).then(|| [c[0], c[1], c[2]])
+    };
+    let luma = |c: [f32; 3]| 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
+    let (def_active, def_inactive, def_fg) =
+        if dark { ([39., 44., 49.], [32., 36., 40.], [252., 252., 252.]) } else { ([227., 229., 231.], [239., 240., 241.], [35., 38., 41.]) };
+    let key = if focused { "activeBackground" } else { "inactiveBackground" };
+    let bg = rgb("WM", key).filter(|c| (luma(*c) < 128.0) == dark).unwrap_or(if focused { def_active } else { def_inactive });
+    let fg = rgb("Colors:Window", "ForegroundNormal").filter(|c| (luma(*c) >= 128.0) == dark).unwrap_or(def_fg);
+    let k = kde.as_deref().and_then(|t| ini_value(t, "KDE", "frameContrast")).and_then(|s| s.parse().ok()).unwrap_or(0.2f32);
+    let m = |i: usize| (bg[i] + (fg[i] - bg[i]) * k).round() as u8;
+    Color32::from_rgb(m(0), m(1), m(2))
+}

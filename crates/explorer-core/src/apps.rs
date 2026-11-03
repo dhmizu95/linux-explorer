@@ -378,7 +378,8 @@ struct IconDir {
     scalable: bool,
 }
 
-fn ini_value(text: &str, group: &str, key: &str) -> Option<String> {
+/// Value of `key` in `[group]` of an INI-style file (desktop entries, kdeglobals).
+pub fn ini_value(text: &str, group: &str, key: &str) -> Option<String> {
     let mut in_group = false;
     for line in text.lines().map(str::trim) {
         if line.starts_with('[') {
