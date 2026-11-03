@@ -543,72 +543,85 @@ fn permissions_page(ui: &mut Ui, d: &mut Props, p: &crate::theme::Palette) {
 
 fn options(app: &mut App, ctx: &egui::Context) {
     let Some(mut draft) = app.dialogs.options.take() else { return };
+    let p = app.palette;
     let mut open = true;
     let mut result: Option<bool> = None; // Some(true)=OK, Some(false)=Cancel
     let mut apply = false;
-    egui::Window::new("Folder Options").id(Id::unique("le_options")).open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
-        ui.set_width(440.0);
-        ui.label(RichText::new("General").strong());
-        ui.horizontal(|ui| {
-            ui.label("Open Linux Explorer to:");
-            egui::ComboBox::from_id_salt("launch").selected_text(match draft.launch_to {
-                LaunchTo::Home => "Home",
-                LaunchTo::ThisPc => "This PC",
-            }).show_ui(ui, |ui| {
-                ui.selectable_value(&mut draft.launch_to, LaunchTo::Home, "Home");
-                ui.selectable_value(&mut draft.launch_to, LaunchTo::ThisPc, "This PC");
+    // A real top-level window (falls back to an in-app window on backends without multi-viewport).
+    let vp = egui::ViewportBuilder::default()
+        .with_title("Folder Options")
+        .with_app_id("linux-explorer")
+        .with_inner_size([500.0, 640.0])
+        .with_min_inner_size([420.0, 320.0]);
+    ctx.show_viewport_immediate(egui::ViewportId::from_hash_of("le_options"), vp, |ui, _class| {
+        if ui.input(|i| i.viewport().close_requested() || i.key_pressed(egui::Key::Escape)) {
+            open = false;
+        }
+        egui::Panel::bottom("le_options_buttons").frame(egui::Frame::new().fill(p.toolbar).inner_margin(egui::Margin::same(12))).show(ui, |ui| {
+            button_row(ui, |ui| {
+                if ui.button("Apply").clicked() {
+                    apply = true;
+                }
+                if ui.button("Cancel").clicked() {
+                    result = Some(false);
+                }
+                if ui.button("  OK  ").clicked() {
+                    result = Some(true);
+                }
             });
         });
-        ui.add_space(4.0);
-        ui.label("Browse folders");
-        ui.radio_value(&mut draft.open_folders_in_new_window, false, "Open each folder in the same window");
-        ui.radio_value(&mut draft.open_folders_in_new_window, true, "Open each folder in its own window");
-        ui.add_space(4.0);
-        ui.label("Click items as follows");
-        ui.radio_value(&mut draft.single_click_open, true, "Single-click to open an item (point to select)");
-        ui.radio_value(&mut draft.single_click_open, false, "Double-click to open an item (single-click to select)");
-        ui.add_space(8.0);
-        ui.separator();
-        ui.label(RichText::new("View").strong());
-        ui.checkbox(&mut draft.show_hidden, "Show hidden files and folders");
-        let mut hide_ext = !draft.show_extensions;
-        if ui.checkbox(&mut hide_ext, "Hide extensions for known file types").changed() {
-            draft.show_extensions = !hide_ext;
-        }
-        ui.checkbox(&mut draft.show_checkboxes, "Use check boxes to select items");
-        ui.checkbox(&mut draft.show_preview_handlers, "Show preview handlers in preview pane");
-        ui.checkbox(&mut draft.show_status_bar, "Show status bar");
-        ui.checkbox(&mut draft.compact, "Decrease space between items (compact view)");
-        ui.checkbox(&mut draft.confirm_recycle, "Display delete confirmation dialog");
-        extra::options_extra(ui, &mut draft);
-        ui.horizontal(|ui| {
-            ui.label("Theme:");
-            ui.radio_value(&mut draft.theme, Theme::System, "Use system setting");
-            ui.radio_value(&mut draft.theme, Theme::Light, "Light");
-            ui.radio_value(&mut draft.theme, Theme::Dark, "Dark");
-        });
-        ui.add_space(8.0);
-        ui.horizontal(|ui| {
-            if ui.button("Clear remembered folder views").clicked() {
-                draft.folder_views.clear();
-            }
-            if ui.button("Restore Defaults").clicked() {
-                let keep_pins = draft.pinned.clone();
-                draft = Settings { pinned: keep_pins, ..Settings::default() };
-            }
-        });
-        ui.add_space(8.0);
-        ui.separator();
-        button_row(ui, |ui| {
-            if ui.button("Apply").clicked() {
-                apply = true;
-            }
-            if ui.button("Cancel").clicked() {
-                result = Some(false);
-            }
-            if ui.button("  OK  ").clicked() {
-                result = Some(true);
-            }
+        egui::CentralPanel::default().frame(egui::Frame::new().fill(p.content).inner_margin(egui::Margin::same(16))).show(ui, |ui| {
+            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                ui.label(RichText::new("General").strong());
+                ui.horizontal(|ui| {
+                    ui.label("Open Linux Explorer to:");
+                    egui::ComboBox::from_id_salt("launch").selected_text(match draft.launch_to {
+                        LaunchTo::Home => "Home",
+                        LaunchTo::ThisPc => "This PC",
+                    }).show_ui(ui, |ui| {
+                        ui.selectable_value(&mut draft.launch_to, LaunchTo::Home, "Home");
+                        ui.selectable_value(&mut draft.launch_to, LaunchTo::ThisPc, "This PC");
+                    });
+                });
+                ui.add_space(4.0);
+                ui.label("Browse folders");
+                ui.radio_value(&mut draft.open_folders_in_new_window, false, "Open each folder in the same window");
+                ui.radio_value(&mut draft.open_folders_in_new_window, true, "Open each folder in its own window");
+                ui.add_space(4.0);
+                ui.label("Click items as follows");
+                ui.radio_value(&mut draft.single_click_open, true, "Single-click to open an item (point to select)");
+                ui.radio_value(&mut draft.single_click_open, false, "Double-click to open an item (single-click to select)");
+                ui.add_space(8.0);
+                ui.separator();
+                ui.label(RichText::new("View").strong());
+                ui.checkbox(&mut draft.show_hidden, "Show hidden files and folders");
+                let mut hide_ext = !draft.show_extensions;
+                if ui.checkbox(&mut hide_ext, "Hide extensions for known file types").changed() {
+                    draft.show_extensions = !hide_ext;
+                }
+                ui.checkbox(&mut draft.show_checkboxes, "Use check boxes to select items");
+                ui.checkbox(&mut draft.show_preview_handlers, "Show preview handlers in preview pane");
+                ui.checkbox(&mut draft.show_status_bar, "Show status bar");
+                ui.checkbox(&mut draft.compact, "Decrease space between items (compact view)");
+                ui.checkbox(&mut draft.confirm_recycle, "Display delete confirmation dialog");
+                extra::options_extra(ui, &mut draft);
+                ui.horizontal(|ui| {
+                    ui.label("Theme:");
+                    ui.radio_value(&mut draft.theme, Theme::System, "Use system setting");
+                    ui.radio_value(&mut draft.theme, Theme::Light, "Light");
+                    ui.radio_value(&mut draft.theme, Theme::Dark, "Dark");
+                });
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    if ui.button("Clear remembered folder views").clicked() {
+                        draft.folder_views.clear();
+                    }
+                    if ui.button("Restore Defaults").clicked() {
+                        let keep_pins = draft.pinned.clone();
+                        draft = Settings { pinned: keep_pins, ..Settings::default() };
+                    }
+                });
+            });
         });
     });
     if apply || result == Some(true) {
