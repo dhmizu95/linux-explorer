@@ -5,7 +5,6 @@
 mod app;
 mod chrome;
 mod dialogs;
-mod dialogs2;
 mod fonts;
 mod icons;
 mod keys;

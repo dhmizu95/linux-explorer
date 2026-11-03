@@ -15,9 +15,11 @@ use explorer_core::places::Drive;
 use explorer_core::props;
 use explorer_core::settings::{LaunchTo, Settings, Theme};
 
+mod extra;
+
 use crate::app::{App, Cmd};
 use crate::icons::{self, Icon};
-pub use crate::dialogs2::{AdminPrompt, BatchRename};
+pub use extra::{AdminPrompt, BatchRename};
 
 #[derive(Clone, Debug)]
 pub enum ConfirmAction {
@@ -132,9 +134,9 @@ pub fn show_all(app: &mut App, ctx: &egui::Context) {
     options(app, ctx);
     confirm(app, ctx);
     open_with(app, ctx);
-    crate::dialogs2::batch_rename(app, ctx);
-    crate::dialogs2::admin(app, ctx);
-    crate::dialogs2::shortcuts(app, ctx);
+    extra::batch_rename(app, ctx);
+    extra::admin(app, ctx);
+    extra::shortcuts(app, ctx);
     error(app, ctx);
 }
 
@@ -578,7 +580,7 @@ fn options(app: &mut App, ctx: &egui::Context) {
         ui.checkbox(&mut draft.show_status_bar, "Show status bar");
         ui.checkbox(&mut draft.compact, "Decrease space between items (compact view)");
         ui.checkbox(&mut draft.confirm_recycle, "Display delete confirmation dialog");
-        crate::dialogs2::options_extra(ui, &mut draft);
+        extra::options_extra(ui, &mut draft);
         ui.horizontal(|ui| {
             ui.label("Theme:");
             ui.radio_value(&mut draft.theme, Theme::System, "Use system setting");

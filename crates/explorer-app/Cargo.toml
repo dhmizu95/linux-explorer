@@ -17,9 +17,9 @@ image.workspace = true
 chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-arboard = { version = "3", default-features = false, features = ["wayland-data-control"] }
-vt100 = "0.18"
-md5 = "0.8"
+arboard.workspace = true
+vt100.workspace = true
+md5.workspace = true
 ttf-parser.workspace = true
 hayro.workspace = true
 zbus.workspace = true
@@ -27,7 +27,7 @@ libc.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
-egui_kittest = { version = "0.37", features = ["eframe"] }
+egui_kittest.workspace = true
 
 [package.metadata.deb]
 maintainer = "Linux Explorer contributors"
