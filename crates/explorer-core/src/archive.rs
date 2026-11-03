@@ -108,8 +108,54 @@ pub fn extract(archive: &Path, dest: &Path) -> io::Result<()> {
     }
 }
 
+/// Open an archive "as a folder" (Explorer's zip folders, Dolphin's archive
+/// browsing): extract once into a cache directory keyed by path and mtime and
+/// return that directory.
+pub fn browse_dir(archive: &Path) -> io::Result<PathBuf> {
+    use std::hash::{Hash, Hasher};
+    let meta = fs::metadata(archive)?;
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    archive.hash(&mut h);
+    meta.modified().ok().hash(&mut h);
+    meta.len().hash(&mut h);
+    let cache = std::env::var_os("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| crate::places::home_dir().join(".cache"))
+        .join("linux-explorer/archives");
+    let name = archive.file_name().unwrap_or_default().to_string_lossy().into_owned();
+    let dir = cache.join(format!("{:016x}", h.finish())).join(&name);
+    let done = dir.join(".le-complete");
+    if done.exists() {
+        return Ok(dir);
+    }
+    let _ = fs::remove_dir_all(&dir);
+    extract(archive, &dir)?;
+    fs::write(&done, b"")?;
+    Ok(dir)
+}
+
+/// Archive cache paths are shown read-only-ish; this tells the UI it is one.
+pub fn is_browse_path(p: &Path) -> bool {
+    p.components().any(|c| c.as_os_str() == "archives") && p.ancestors().any(|a| a.join(".le-complete").exists())
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn browse_zip_as_folder() {
+        let t = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CACHE_HOME", t.path().join("cache"));
+        let d = t.path().join("Docs");
+        fs::create_dir(&d).unwrap();
+        fs::write(d.join("x.txt"), b"hi").unwrap();
+        let z = compress_to_zip(&[d]).unwrap();
+        let dir = browse_dir(&z).unwrap();
+        assert_eq!(fs::read(dir.join("Docs/x.txt")).unwrap(), b"hi");
+        assert!(is_browse_path(&dir.join("Docs")));
+        // Second open reuses the cache.
+        assert_eq!(browse_dir(&z).unwrap(), dir);
+    }
+
     use super::*;
 
     #[test]

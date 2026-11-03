@@ -134,8 +134,39 @@ Legend: ✅ implemented & tested · 🟡 partial · ⬜ not yet
 |---|---|---|
 | 8.1 | `.desktop` file, icon, `install.sh` (user or system) | ✅ |
 | 8.2 | `.deb` (cargo-deb) and `.rpm` (cargo-generate-rpm) metadata | ✅ |
-| 8.3 | 63 core tests (sorting, grouping, naming, ops engine, trash, undo, search, archive, desktop entries) + 7 UI tests, including an end-to-end keyboard test that drives the real UI headlessly (egui_kittest) and a render-every-surface test that fails on missing glyphs | ✅ |
+| 8.3 | 76 core tests (sorting, grouping, naming, ops engine, trash, undo, search, archive, desktop entries, batch rename, xattr tags, devices, git, service menus, admin) + 10 UI tests, including an end-to-end keyboard test that drives the real UI headlessly (egui_kittest) and a render-every-surface test that fails on missing glyphs | ✅ |
 | 8.4 | Built & tested on Ubuntu 24.04 (WSL2, run with WSLg) and Fedora 45 (container: tests, release build, install.sh, desktop-file-validate) | ✅ |
 | 8.5 | Headless self-screenshot mode (`--screenshot out.png`) for visual regression | ✅ |
 | 8.6 | Accessibility tree (AccessKit) for screen readers | 🟡 (standard widgets are exposed; custom-painted file items are not labelled yet) |
 | 8.7 | Localisation | ⬜ |
+
+## 9. Dolphin parity (KDE file manager)
+
+Dolphin features added on top of the Explorer feel. KDE-only services are mapped to standard
+freedesktop/Linux equivalents so they work on GNOME (Fedora/Ubuntu default) too.
+
+| # | Dolphin feature | How it works here | Status |
+|---|---|---|---|
+| 9.1 | Split view (Dolphin F3) | Two panes, each with its own location strip; click a pane to make it active; copy/drag between panes. Ctrl+Shift+S (F3 stays Explorer's search) | ✅ |
+| 9.2 | Embedded terminal panel (Dolphin F4) | Real PTY running `$SHELL` with 256-colour VT rendering (`vt100`), scrollback, resize, Ctrl+Shift+C/V, follows the current folder. Ctrl+` | ✅ |
+| 9.3 | Filter bar (Ctrl+I) | Name filter with substring or `*`/`?` wildcards, Esc closes | ✅ |
+| 9.4 | Expandable folders in Details view | Chevron per folder, → / ← on the keyboard, unlimited depth | ✅ |
+| 9.5 | Batch rename (F2 on several items) | Numbered pattern (`Holiday ###`), find & replace, change case; live preview, collision check, swap-safe, one Ctrl+Z undoes all | ✅ |
+| 9.6 | Folder item counts in Size column | "N items", cached per load | ✅ |
+| 9.7 | Video & PDF thumbnails | Shared freedesktop thumbnail cache first, then `ffmpegthumbnailer` / `pdftoppm` | ✅ (tools optional) |
+| 9.8 | Mount unmounted devices | This PC → "Other devices": partitions from `lsblk`, mounted with `udisksctl`; phones/cameras (MTP/PTP) via `gio mount` | ✅ |
+| 9.9 | Archives as folders | Double-click .zip/.tar.*/.7z/.rar opens a cached extracted copy (read-only snapshot) | ✅ |
+| 9.10 | Network protocols (KIO smb/sftp/ftp/webdav/mtp) | Type `smb://`, `sftp://`, `ftp://`, `dav://` in the address bar or Network page → GVfs (`gio mount`), credential dialog when asked | ✅ (needs gvfs) |
+| 9.11 | Admin mode (kio-admin) | "Access denied" on copy/move/delete/rename offers **Continue** with administrator rights via polkit (`pkexec`) | ✅ |
+| 9.12 | Tags, ratings, comments | Same xattrs as Dolphin/Baloo (`user.xdg.tags`, `user.baloo.rating`, `user.xdg.comment`): edit in the Details pane, show as columns, search with `tag:` / `rating:` | ✅ |
+| 9.13 | Content search | `content:"text"` scans text files (no index) | 🟡 (Baloo-style indexing not included) |
+| 9.14 | Service menus | Dolphin `kio/servicemenus/*.desktop` and Nautilus scripts appear under **More actions** in the context menu | ✅ |
+| 9.15 | Git plugin | Status badges on files/folders and a Git status column | ✅ |
+| 9.16 | Column chooser | Right-click the header: Date created/accessed, Owner, Group, Permissions, Tags, Rating, Comment, Git | ✅ |
+| 9.17 | Configurable toolbar | Options → Command bar buttons | ✅ |
+| 9.18 | Configurable shortcuts | Read-only reference (F1); remapping not implemented | 🟡 |
+| 9.19 | Restore last session | Options → "Restore previous tabs at startup" | ✅ |
+| 9.20 | Free space in status bar | Bar + "N GB free" | ✅ |
+| 9.21 | Duplicate here, Show hidden (Ctrl+H, Alt+.) | Context menu / shortcuts | ✅ |
+| 9.22 | Drag files out to other applications | winit (the windowing library) has no drag-source support on Linux; use Copy/Paste, which is shared with other file managers | ⬜ not possible with current toolkit |
+| 9.23 | KDE Activities | Plasma-only concept | ⬜ not applicable |

@@ -120,6 +120,19 @@ pub struct Settings {
     pub column_widths: [f32; 4],
     pub window_size: (f32, f32),
     pub open_folders_in_new_window: bool,
+    /// Reopen the last tabs on start (Dolphin "Show on startup: last session").
+    pub restore_session: bool,
+    pub session: Vec<PathBuf>,
+    /// Additional Details columns chosen from the header menu.
+    pub extra_columns: Vec<String>,
+    /// Command bar buttons the user hid in Options.
+    pub toolbar_hidden: Vec<String>,
+    /// Show "N items" for folders in the Size column (Dolphin).
+    pub folder_item_counts: bool,
+    pub git_overlays: bool,
+    /// Expandable folders in Details view.
+    pub expandable_folders: bool,
+    pub show_free_space: bool,
 }
 
 impl Default for Settings {
@@ -146,6 +159,14 @@ impl Default for Settings {
             column_widths: [300.0, 160.0, 140.0, 90.0],
             window_size: (1200.0, 760.0),
             open_folders_in_new_window: false,
+            restore_session: false,
+            session: Vec::new(),
+            extra_columns: Vec::new(),
+            toolbar_hidden: Vec::new(),
+            folder_item_counts: true,
+            git_overlays: true,
+            expandable_folders: true,
+            show_free_space: true,
         }
     }
 }

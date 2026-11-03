@@ -11,7 +11,7 @@ use explorer_core::format;
 use explorer_core::location::Location;
 use explorer_core::props;
 
-use crate::app::App;
+use crate::app::{App, Cmd};
 use crate::icons::{self, Icon};
 use crate::thumbs::Thumbs;
 
@@ -174,7 +174,13 @@ fn details(app: &mut App, ui: &mut Ui, sel: &[Entry]) {
                     rows.push(("Target", std::fs::read_link(&e.path).map(|t| t.to_string_lossy().into_owned()).unwrap_or_default()));
                 }
             }
+            if let Some(g) = app.tab().git.get(&e.path) {
+                rows.push(("Git", g.label().to_string()));
+            }
             prop_grid(ui, &rows, &p);
+            if e.deleted.is_none() {
+                meta_editor(app, ui, e);
+            }
         }
         many => {
             ui.add_space(20.0);
@@ -199,4 +205,63 @@ fn prop_grid(ui: &mut Ui, rows: &[(&str, String)], p: &crate::theme::Palette) {
             ui.end_row();
         }
     });
+}
+
+/// Tags, star rating and comment, stored in the same extended attributes
+/// Dolphin uses, so both file managers share them.
+fn meta_editor(app: &mut App, ui: &mut Ui, e: &Entry) {
+    let p = app.palette;
+    let id = Id::unique(("le_meta_draft", &e.path));
+    let (mut tags, mut stars, mut comment): (String, u8, String) = ui.ctx().data(|d| d.get_temp(id)).unwrap_or_else(|| {
+        let m = app.tab().meta(&e.path);
+        (m.tags.join(", "), m.stars, m.comment)
+    });
+    ui.add_space(12.0);
+    ui.label(RichText::new("Tags & rating").size(14.0).strong());
+    ui.add_space(4.0);
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("Rating").color(p.text_dim));
+        for i in 1..=5u8 {
+            let (r, resp) = ui.allocate_exact_size(vec2(18.0, 18.0), Sense::click());
+            star(ui, r, i <= stars, &p);
+            if resp.clicked() {
+                stars = if stars == i { 0 } else { i };
+            }
+        }
+    });
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("Tags").color(p.text_dim));
+        ui.add(egui::TextEdit::singleline(&mut tags).hint_text("work, 2026").desired_width(f32::INFINITY));
+    });
+    ui.label(RichText::new("Comment").color(p.text_dim));
+    ui.add(egui::TextEdit::multiline(&mut comment).desired_rows(2).desired_width(f32::INFINITY));
+    let saved = app.tab().meta(&e.path);
+    let draft = explorer_core::meta::Meta { tags: explorer_core::meta::parse_tags(&tags), stars, comment: comment.clone() };
+    if draft != saved && ui.button("Save").clicked() {
+        app.cmd(Cmd::SaveMeta(e.path.clone(), draft));
+        ui.ctx().data_mut(|d| d.remove::<(String, u8, String)>(id));
+        return;
+    }
+    ui.ctx().data_mut(|d| d.insert_temp(id, (tags, stars, comment)));
+}
+
+fn star(ui: &Ui, r: Rect, on: bool, p: &crate::theme::Palette) {
+    let c = r.center();
+    let pts: Vec<egui::Pos2> = (0..10)
+        .map(|k| {
+            let a = -std::f32::consts::FRAC_PI_2 + k as f32 * std::f32::consts::PI / 5.0;
+            let rad = if k % 2 == 0 { r.width() * 0.48 } else { r.width() * 0.2 };
+            pos2(c.x + rad * a.cos(), c.y + rad * a.sin())
+        })
+        .collect();
+    let fill = if on { egui::Color32::from_rgb(0xF2, 0xB0, 0x1E) } else { egui::Color32::TRANSPARENT };
+    // Star is concave: draw as a fan of triangles for the fill.
+    if on {
+        for k in 0..10 {
+            ui.painter().add(egui::Shape::convex_polygon(vec![c, pts[k], pts[(k + 1) % 10]], fill, Stroke::NONE));
+        }
+    }
+    let mut outline = pts.clone();
+    outline.push(pts[0]);
+    ui.painter().add(egui::Shape::line(outline, Stroke::new(1.0, if on { fill } else { p.text_dim })));
 }

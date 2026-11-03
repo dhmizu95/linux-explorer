@@ -8,20 +8,26 @@
 #![allow(clippy::cloned_ref_to_slice_refs)]
 
 pub mod apps;
+pub mod admin;
 pub mod archive;
+pub mod batch_rename;
 pub mod clipboard;
+pub mod devices;
 pub mod entry;
 pub mod filetype;
 pub mod format;
+pub mod git;
 pub mod grouping;
 pub mod history;
 pub mod location;
+pub mod meta;
 pub mod names;
 pub mod natsort;
 pub mod ops;
 pub mod places;
 pub mod props;
 pub mod search;
+pub mod servicemenus;
 pub mod settings;
 pub mod sorting;
 pub mod terminal;

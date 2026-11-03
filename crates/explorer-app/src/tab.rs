@@ -1,5 +1,6 @@
 //! One Explorer tab: location, listing, view settings, selection.
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::{Instant, SystemTime};
@@ -53,6 +54,15 @@ pub struct Tab {
     pub type_ahead: (String, Instant),
     /// Bin items keep their trash handles by entry path.
     pub bin_items: HashMap<PathBuf, trashbin::TrashItem>,
+    /// Ctrl+I name filter (Dolphin filter bar).
+    pub name_filter: Option<String>,
+    /// Folders expanded inline in Details view.
+    pub expanded: HashSet<PathBuf>,
+    /// Indentation level of each visible row.
+    pub depth: Vec<u8>,
+    pub git: HashMap<PathBuf, explorer_core::git::GitState>,
+    pub counts: RefCell<HashMap<PathBuf, Option<usize>>>,
+    pub meta_cache: RefCell<HashMap<PathBuf, explorer_core::meta::Meta>>,
 }
 
 impl Tab {
@@ -81,6 +91,12 @@ impl Tab {
             scroll_to_focus: false,
             type_ahead: (String::new(), Instant::now()),
             bin_items: HashMap::new(),
+            name_filter: None,
+            expanded: HashSet::new(),
+            depth: Vec::new(),
+            git: HashMap::new(),
+            counts: RefCell::new(HashMap::new()),
+            meta_cache: RefCell::new(HashMap::new()),
         };
         t.load(settings);
         t
@@ -111,6 +127,11 @@ impl Tab {
         self.address_edit = None;
         self.type_filter = None;
         self.collapsed.clear();
+        self.expanded.clear();
+        // The filter bar stays open but starts empty in the new folder.
+        if self.name_filter.is_some() {
+            self.name_filter = Some(String::new());
+        }
         if !matches!(self.loc, Location::Search { .. }) {
             self.search_text.clear();
         }
@@ -143,6 +164,8 @@ impl Tab {
 
     pub fn load(&mut self, settings: &Settings) {
         self.error = None;
+        self.counts.borrow_mut().clear();
+        self.meta_cache.borrow_mut().clear();
         self.bin_items.clear();
         self.view = match &self.loc {
             Location::Path(p) => settings.view_for(p),
@@ -157,6 +180,7 @@ impl Tab {
         match &self.loc {
             Location::Path(p) => {
                 self.dir_mtime = std::fs::metadata(p).and_then(|m| m.modified()).ok();
+                self.git = if settings.git_overlays { explorer_core::git::status(p).unwrap_or_default() } else { HashMap::new() };
                 match entry::read_dir(p) {
                     Ok(v) => self.entries = v,
                     Err(e) => {
@@ -220,10 +244,20 @@ impl Tab {
                 Some(t) => explorer_core::filetype::type_description(e) == *t,
                 None => true,
             })
+            .filter(|e| name_matches(self.name_filter.as_deref(), &e.name))
             .cloned()
             .collect();
         sort_entries(&mut v, self.view.sort);
         self.groups.clear();
+        self.depth = vec![0; v.len()];
+        // Expandable folders (Dolphin Details view): insert children after parents.
+        if settings.expandable_folders && self.view.group == GroupBy::None && !self.expanded.is_empty() {
+            let mut out = Vec::with_capacity(v.len());
+            let mut depth = Vec::with_capacity(v.len());
+            self.expand_into(v, 0, settings, &mut out, &mut depth);
+            v = out;
+            self.depth = depth;
+        }
         if self.view.group != GroupBy::None {
             let today = Local::now().date_naive();
             let mut keyed: Vec<((i64, String), Entry)> =
@@ -255,6 +289,45 @@ impl Tab {
                 self.focus = self.visible.len().checked_sub(1);
             }
         }
+    }
+
+    fn expand_into(&self, items: Vec<Entry>, level: u8, settings: &Settings, out: &mut Vec<Entry>, depth: &mut Vec<u8>) {
+        for e in items {
+            let open = e.is_dir() && self.expanded.contains(&e.path) && level < 16;
+            let path = e.path.clone();
+            out.push(e);
+            depth.push(level);
+            if open {
+                let mut kids: Vec<Entry> = entry::read_dir(&path)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|k| settings.show_hidden || !k.hidden)
+                    .filter(|k| name_matches(self.name_filter.as_deref(), &k.name) || k.is_dir())
+                    .collect();
+                sort_entries(&mut kids, self.view.sort);
+                self.expand_into(kids, level + 1, settings, out, depth);
+            }
+        }
+    }
+
+    /// "N items" for a folder, cached until the next reload.
+    pub fn item_count(&self, p: &Path) -> Option<usize> {
+        if let Some(v) = self.counts.borrow().get(p) {
+            return *v;
+        }
+        let n = std::fs::read_dir(p).ok().map(|rd| rd.count());
+        self.counts.borrow_mut().insert(p.to_path_buf(), n);
+        n
+    }
+
+    /// Tags/rating/comment for the Tags and Rating columns, cached.
+    pub fn meta(&self, p: &Path) -> explorer_core::meta::Meta {
+        if let Some(m) = self.meta_cache.borrow().get(p) {
+            return m.clone();
+        }
+        let m = explorer_core::meta::read(p);
+        self.meta_cache.borrow_mut().insert(p.to_path_buf(), m.clone());
+        m
     }
 
     fn sort_group_key(&self) -> GroupBy {
@@ -480,6 +553,13 @@ impl Tab {
     }
 }
 
+/// Filter bar matching: substring, or wildcards when `*`/`?` are used.
+pub fn name_matches(filter: Option<&str>, name: &str) -> bool {
+    let Some(f) = filter.map(str::trim).filter(|f| !f.is_empty()) else { return true };
+    let (f, n) = (f.to_lowercase(), name.to_lowercase());
+    if f.contains(['*', '?']) { explorer_core::search::wildcard(&f, &n) } else { n.contains(&f) }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -541,6 +621,32 @@ mod tests {
         s.show_hidden = true;
         tab.rebuild(&s);
         assert_eq!(tab.visible.len(), 2);
+    }
+
+    #[test]
+    fn filter_bar_and_expandable_folders() {
+        let t = tempfile::tempdir().unwrap();
+        fs::create_dir_all(t.path().join("src/inner")).unwrap();
+        fs::write(t.path().join("src/main.rs"), b"").unwrap();
+        fs::write(t.path().join("notes.txt"), b"").unwrap();
+        fs::write(t.path().join("Cargo.toml"), b"").unwrap();
+        let s = Settings::default();
+        let mut tab = Tab::new(Location::Path(t.path().to_path_buf()), &s);
+        tab.name_filter = Some("*.t?t".into());
+        tab.rebuild(&s);
+        assert_eq!(tab.visible.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(), vec!["notes.txt"]);
+        tab.name_filter = Some("CARGO".into());
+        tab.rebuild(&s);
+        assert_eq!(tab.visible.len(), 1);
+        tab.name_filter = None;
+        tab.expanded.insert(t.path().join("src"));
+        tab.rebuild(&s);
+        let rows: Vec<(String, u8)> = tab.visible.iter().zip(&tab.depth).map(|(e, d)| (e.name.clone(), *d)).collect();
+        assert_eq!(
+            rows,
+            vec![("src".into(), 0), ("inner".into(), 1), ("main.rs".into(), 1), ("Cargo.toml".into(), 0), ("notes.txt".into(), 0)]
+        );
+        assert_eq!(tab.item_count(&t.path().join("src")), Some(2));
     }
 
     #[test]

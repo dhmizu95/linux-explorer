@@ -202,9 +202,48 @@ fn items_menu(app: &mut App, ui: &mut Ui, cmds: &mut Vec<Cmd>) {
         if item(ui, "Create shortcut", "") {
             cmds.push(Cmd::CreateShortcut);
         }
+        if item(ui, "Duplicate", "") {
+            cmds.push(Cmd::Duplicate);
+        }
+        if sel.len() > 1 && item(ui, "Rename multiple…", "F2") {
+            cmds.push(Cmd::BatchRename);
+        }
     }
     if item(ui, "Copy as path", "Ctrl+Shift+C") {
         cmds.push(Cmd::CopyAsPath);
+    }
+    if let Some(e) = single.as_ref().filter(|e| e.is_dir()) {
+        if item(ui, "Open in split view", "") {
+            if app.second.is_none() {
+                cmds.push(Cmd::ToggleSplit);
+            }
+            cmds.push(Cmd::FocusPane(true));
+            cmds.push(Cmd::Navigate(Location::Path(e.path.clone())));
+        }
+    }
+    // Actions from other apps: KDE service menus and Nautilus scripts.
+    let files: Vec<std::path::PathBuf> = sel.iter().map(|e| e.path.clone()).collect();
+    let actions = explorer_core::servicemenus::applicable(&app.service_actions(), &files);
+    if !actions.is_empty() {
+        ui.menu_button("More actions", |ui| {
+            ui.set_min_width(220.0);
+            let mut groups: Vec<String> = actions.iter().filter_map(|a| a.submenu.clone()).collect();
+            groups.dedup();
+            for a in actions.iter().filter(|a| a.submenu.is_none()) {
+                if ui.button(&a.name).clicked() {
+                    cmds.push(Cmd::RunService(a.clone(), files.clone()));
+                }
+            }
+            for g in groups {
+                ui.menu_button(&g, |ui| {
+                    for a in actions.iter().filter(|a| a.submenu.as_deref() == Some(g.as_str())) {
+                        if ui.button(&a.name).clicked() {
+                            cmds.push(Cmd::RunService(a.clone(), files.clone()));
+                        }
+                    }
+                });
+            }
+        });
     }
     if let Some(e) = &single {
         if let Location::Search { .. } = app.tab().loc {

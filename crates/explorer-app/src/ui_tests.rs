@@ -6,6 +6,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use eframe::egui::{self, Key, Modifiers};
+use egui_kittest::kittest::Queryable;
 use egui_kittest::Harness;
 use explorer_core::location::Location;
 use explorer_core::ops::ConflictChoice;
@@ -52,6 +53,7 @@ fn exists(p: &Path) -> bool {
 #[test]
 fn ui_end_to_end() {
     explorer_keyboard_workflows();
+    dolphin_features();
     renders_every_surface();
 }
 
@@ -63,6 +65,7 @@ fn explorer_keyboard_workflows() {
     unsafe {
         std::env::set_var("XDG_CONFIG_HOME", root.path().join("config"));
         std::env::set_var("XDG_DATA_HOME", root.path().join("data"));
+        std::env::set_var("XDG_CACHE_HOME", root.path().join("cache"));
     }
     fs::create_dir_all(root.path().join("data")).unwrap();
     let work = root.path().join("work");
@@ -237,4 +240,147 @@ fn renders_every_surface() {
     h.state_mut().cmd(Cmd::Navigate(Location::Path(work.clone())));
     h.state_mut().cmd(Cmd::FocusAddress);
     h.run_steps(3);
+    h.key_press(Key::Escape);
+    // Dolphin surfaces.
+    for c in [Cmd::ToggleSplit, Cmd::ToggleFilterBar, Cmd::ToggleTerminal] {
+        h.state_mut().cmd(c);
+        h.run_steps(3);
+    }
+    for (k, _) in crate::view::EXTRA_COLUMNS {
+        h.state_mut().cmd(Cmd::ToggleColumn(k.to_string()));
+    }
+    h.state_mut().cmd(Cmd::SetView(ViewMode::Details));
+    h.run_steps(3);
+    let two = vec![work.join("a.txt"), work.join("b.png")];
+    h.state_mut().dialogs.batch = Some(crate::dialogs::BatchRename::new(two));
+    h.run_steps(2);
+    h.state_mut().dialogs.batch = None;
+    h.state_mut().dialogs.credentials = Some(crate::dialogs::Credentials { uri: "smb://nas/share".into(), ..Default::default() });
+    h.run_steps(2);
+    h.state_mut().dialogs.credentials = None;
+    h.state_mut().dialogs.admin = Some(crate::dialogs::AdminPrompt { message: "Need admin".into(), cmd: Cmd::Refresh });
+    h.run_steps(2);
+    h.state_mut().dialogs.admin = None;
+    h.state_mut().dialogs.shortcuts = true;
+    h.run_steps(2);
+}
+
+/// Split view, filter bar, expandable folders, batch rename, terminal panel,
+/// tags, archives as folders — driven through the real UI.
+fn dolphin_features() {
+    use crate::app::Cmd;
+
+    let home = std::env::var("HOME").unwrap();
+    let root = tempfile::tempdir_in(home).unwrap();
+    let work = root.path().join("w");
+    fs::create_dir_all(work.join("photos/2026")).unwrap();
+    fs::create_dir_all(work.join("target")).unwrap();
+    for n in ["IMG_001.jpg", "IMG_002.jpg", "IMG_003.jpg"] {
+        fs::write(work.join("photos").join(n), b"jpg").unwrap();
+    }
+    fs::write(work.join("readme.txt"), b"hello").unwrap();
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(1280.0, 800.0))
+        .build_eframe(|cc| App::new(cc, startup(Location::Path(work.clone()))));
+    h.run_steps(3);
+
+    // Ctrl+I filter bar: typing narrows the list.
+    h.key_press_modifiers(Modifiers::COMMAND, Key::I);
+    h.run_steps(3);
+    assert!(h.state().tab().name_filter.is_some());
+    text(&h, "read");
+    h.run_steps(3);
+    assert_eq!(names(h.state()), vec!["readme.txt"]);
+    h.key_press(Key::Escape);
+    h.run_steps(3);
+    assert!(h.state().tab().name_filter.is_none(), "Escape closes the filter bar");
+    assert_eq!(names(h.state()).len(), 3);
+
+    // Details tree: Right expands the focused folder inline, Left collapses.
+    h.state_mut().tab_mut().select_only_path(&work.join("photos"));
+    h.key_press(Key::ArrowRight);
+    h.run_steps(2);
+    assert!(names(h.state()).contains(&"IMG_002.jpg".to_string()));
+    assert_eq!(h.state().tab().depth[1], 1);
+    h.key_press(Key::ArrowLeft);
+    h.run_steps(2);
+    assert!(!names(h.state()).contains(&"IMG_002.jpg".to_string()));
+
+    // Batch rename: select three photos, F2 opens the dialog, apply a pattern.
+    h.state_mut().cmd(Cmd::Navigate(Location::Path(work.join("photos"))));
+    h.run_steps(2);
+    for n in ["IMG_001.jpg", "IMG_002.jpg", "IMG_003.jpg"] {
+        h.state_mut().tab_mut().selection.insert(work.join("photos").join(n));
+    }
+    h.key_press(Key::F2);
+    h.run_steps(2);
+    assert!(h.state().dialogs.batch.is_some(), "F2 with several items opens batch rename");
+    h.state_mut().dialogs.batch.as_mut().unwrap().pattern = "Trip ##".into();
+    h.run_steps(1);
+    h.get_by_label("Rename").click();
+    h.run_steps(3);
+    for n in ["Trip 01.jpg", "Trip 02.jpg", "Trip 03.jpg"] {
+        assert!(exists(&work.join("photos").join(n)), "{n} missing");
+    }
+    // One Ctrl+Z undoes the whole batch.
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run_steps(2);
+    assert!(exists(&work.join("photos/IMG_001.jpg")) && !exists(&work.join("photos/Trip 01.jpg")));
+
+    // Split view: second pane, copy from left to right with the clipboard.
+    h.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::S);
+    h.run_steps(2);
+    assert!(h.state().second.is_some() && h.state().focus_second);
+    h.state_mut().cmd(Cmd::Navigate(Location::Path(work.join("target"))));
+    h.run_steps(2);
+    h.state_mut().cmd(Cmd::FocusPane(false));
+    h.run_steps(1);
+    h.state_mut().tab_mut().select_only_path(&work.join("photos/IMG_001.jpg"));
+    h.key_press_modifiers(Modifiers::COMMAND, Key::C);
+    h.run_steps(1);
+    h.state_mut().cmd(Cmd::FocusPane(true));
+    h.run_steps(1);
+    assert_eq!(h.state().tab().loc, Location::Path(work.join("target")));
+    h.key_press_modifiers(Modifiers::COMMAND, Key::V);
+    wait(&mut h, "paste into right pane", |a| a.ops.is_empty() && exists(&work.join("target/IMG_001.jpg")));
+    h.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::S);
+    h.run_steps(2);
+    assert!(h.state().second.is_none() && !h.state().focus_second);
+
+    // Terminal panel follows the current folder.
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Backtick);
+    h.run_steps(3);
+    assert!(h.state().show_terminal);
+    h.state_mut().terminal.as_mut().unwrap().write(b"echo panel-$((6*7)); pwd\r");
+    let t0 = Instant::now();
+    loop {
+        h.step();
+        let c = h.state().terminal.as_ref().unwrap().contents();
+        if c.contains("panel-42") && c.contains("/photos") {
+            break;
+        }
+        assert!(t0.elapsed() < Duration::from_secs(10), "terminal output: {c}");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Backtick);
+    h.run_steps(1);
+
+    // Tags + rating (Dolphin-compatible xattrs) and searching by them.
+    let f = work.join("readme.txt");
+    let m = explorer_core::meta::Meta { tags: vec!["docs".into()], stars: 4, comment: "Read me".into() };
+    h.state_mut().cmd(Cmd::SaveMeta(f.clone(), m.clone()));
+    h.run_steps(2);
+    if explorer_core::meta::read(&f) == m {
+        h.state_mut().cmd(Cmd::Navigate(Location::Path(work.clone())));
+        h.state_mut().cmd(Cmd::Search("tag:docs rating:3".into()));
+        wait(&mut h, "tag search", |a| matches!(a.tab().loc, Location::Search { .. }) && !a.tab().searching);
+        assert_eq!(names(h.state()), vec!["readme.txt"]);
+    }
+
+    // Archives open as folders.
+    let zip = explorer_core::archive::compress_to_zip(&[work.join("photos")]).unwrap();
+    h.state_mut().cmd(Cmd::OpenPath(zip));
+    h.run_steps(2);
+    let loc = h.state().tab().loc.clone();
+    assert!(matches!(&loc, Location::Path(p) if p.join("photos/IMG_001.jpg").exists()), "archive view: {loc:?}");
 }

@@ -94,6 +94,8 @@ pub struct OpResult {
     /// Top-level sources that were trashed or deleted.
     pub removed: Vec<PathBuf>,
     pub errors: Vec<String>,
+    /// Top-level sources that hit an error (for "retry as administrator").
+    pub failed: Vec<PathBuf>,
     pub cancelled: bool,
 }
 
@@ -285,7 +287,11 @@ impl Worker {
                 }
                 target = names::copy_name(dest, &name.to_string_lossy(), src_is_dir);
             }
+            let errors_before = self.result.errors.len();
             let r = if is_move { self.move_item(src, &target) } else { self.copy_item(src, &target) };
+            if self.result.errors.len() > errors_before {
+                self.result.failed.push(src.clone());
+            }
             match r {
                 Ok(Some(t)) => self.result.pairs.push((src.clone(), t)),
                 Ok(None) => {}
@@ -488,7 +494,10 @@ impl Worker {
             };
             match r {
                 Ok(()) => self.result.removed.push(src.clone()),
-                Err(e) => self.result.errors.push(format!("{}: {e}", src.display())),
+                Err(e) => {
+                    self.result.errors.push(format!("{}: {e}", src.display()));
+                    self.result.failed.push(src.clone());
+                }
             }
             self.progress.done_items += 1;
         }

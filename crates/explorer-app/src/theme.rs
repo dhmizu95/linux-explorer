@@ -185,6 +185,14 @@ pub fn install_fallback_fonts(ctx: &egui::Context) {
     files.extend(
         ["/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf"].map(std::path::PathBuf::from),
     );
+    // Symbols the UI itself draws as text (rating stars, check marks, arrows).
+    for cp in ["2605", "2714", "2192", "25cf"] {
+        if let Ok(o) = std::process::Command::new("fc-list").args([format!(":charset={cp}"), "file".into()]).output() {
+            if let Some(f) = String::from_utf8_lossy(&o.stdout).lines().map(|l| l.trim().trim_end_matches(':')).find(|l| !l.is_empty()) {
+                files.push(f.into());
+            }
+        }
+    }
     for (i, f) in files.into_iter().enumerate() {
         if !seen.insert(f.clone()) {
             continue;

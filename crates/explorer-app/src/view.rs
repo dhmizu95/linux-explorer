@@ -42,14 +42,135 @@ pub fn geometry(ctx: &egui::Context) -> Geometry {
 pub fn central(app: &mut App, ui: &mut Ui) {
     let p = app.palette;
     egui::CentralPanel::default().frame(Frame::new().fill(p.content)).show(ui, |ui| {
-        let loc = app.tab().loc.clone();
-        match loc {
-            Location::Home => home_page(app, ui),
-            Location::ThisPc => this_pc_page(app, ui),
-            Location::Network => network_page(app, ui),
-            _ => items_view(app, ui),
+        if app.second.is_none() {
+            app.focus_second = false;
+            pane(app, ui);
+            return;
         }
+        // Split view: render both panes; commands go to the one last clicked.
+        let full = ui.max_rect();
+        let mid = full.center().x;
+        let active = app.focus_second;
+        let pressed = ui.input(|i| i.pointer.any_pressed());
+        let mut new_focus = active;
+        let mut active_geo = None;
+        for (second, rect) in [
+            (false, Rect::from_min_max(full.min, pos2(mid - 1.0, full.bottom()))),
+            (true, Rect::from_min_max(pos2(mid + 1.0, full.top()), full.max)),
+        ] {
+            if pressed && ui.rect_contains_pointer(rect) {
+                new_focus = second;
+            }
+            app.focus_second = second;
+            let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect).id_salt(("le_pane", second)));
+            child.set_clip_rect(rect);
+            if pane_header(app, &mut child, second == active, second) {
+                app.cmd(Cmd::ToggleSplit);
+            }
+            pane(app, &mut child);
+            if second == active {
+                active_geo = Some(geometry(ui.ctx()));
+            }
+        }
+        if let Some(g) = active_geo {
+            ui.ctx().data_mut(|d| d.insert_temp(geo_id(), g));
+        }
+        app.focus_second = new_focus;
+        ui.painter().line_segment([pos2(mid, full.top()), pos2(mid, full.bottom())], Stroke::new(1.0, p.border));
     });
+}
+
+fn pane(app: &mut App, ui: &mut Ui) {
+    let loc = app.tab().loc.clone();
+    match loc {
+        Location::Home => home_page(app, ui),
+        Location::ThisPc => this_pc_page(app, ui),
+        Location::Network => network_page(app, ui),
+        _ => items_view(app, ui),
+    }
+}
+
+/// Small location strip above each split pane; returns true if "close" was clicked.
+fn pane_header(app: &mut App, ui: &mut Ui, active: bool, closable: bool) -> bool {
+    let p = app.palette;
+    let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 28.0), Sense::click());
+    ui.painter().rect_filled(r, CornerRadius::ZERO, p.toolbar);
+    if active {
+        ui.painter().line_segment([r.left_bottom(), r.right_bottom()], Stroke::new(2.0, p.accent));
+    }
+    let loc = app.tab().loc.clone();
+    icons::draw(ui.painter(), Rect::from_center_size(pos2(r.left() + 16.0, r.center().y), vec2(16.0, 16.0)), crate::chrome::location_icon(&loc, app.bin_full), p.dark);
+    let g = widgets::truncated(ui, &loc.address_text(), FontId::proportional(12.5), if active { p.text } else { p.text_dim }, r.width() - 70.0);
+    ui.painter().galley(pos2(r.left() + 30.0, r.center().y - g.size().y / 2.0), g, p.text);
+    let mut close = false;
+    if closable {
+        let cr = Rect::from_center_size(pos2(r.right() - 16.0, r.center().y), vec2(22.0, 22.0));
+        let c = ui.interact(cr, ui.scope_id().with("pane_close"), Sense::click());
+        if c.hovered() {
+            ui.painter().rect_filled(cr, CornerRadius::same(4), p.hover);
+        }
+        widgets::paint_glyph(ui.painter(), cr.shrink(6.0), widgets::Glyph::Close, p.text);
+        close = c.on_hover_text("Close split view").clicked();
+    }
+    let _ = resp;
+    close
+}
+
+/// Embedded terminal at the bottom of the view (Dolphin's terminal panel).
+pub fn terminal_panel(app: &mut App, ui: &mut Ui) {
+    let p = app.palette;
+    egui::Panel::bottom("le_terminal_panel")
+        .resizable(true)
+        .default_size(230.0)
+        .size_range(90.0..=900.0)
+        .frame(Frame::new().fill(p.content).inner_margin(Margin { left: 0, right: 0, top: 1, bottom: 0 }))
+        .show(ui, |ui| {
+            let r = ui.max_rect();
+            ui.painter().line_segment([r.left_top(), r.right_top()], Stroke::new(1.0, p.border));
+            app.terminal_focused = match app.terminal.as_mut() {
+                Some(t) => crate::term::show(t, ui, p.dark),
+                None => false,
+            };
+        });
+}
+
+/// Ctrl+I filter bar under the items (Dolphin).
+pub fn filter_bar(app: &mut App, ui: &mut Ui) {
+    let p = app.palette;
+    egui::Panel::bottom("le_filter_bar")
+        .exact_size(40.0)
+        .resizable(false)
+        .frame(Frame::new().fill(p.toolbar).inner_margin(Margin::symmetric(10, 4)))
+        .show(ui, |ui| {
+            ui.horizontal_centered(|ui| {
+                ui.label(egui::RichText::new("Filter:").color(p.text_dim));
+                let id = Id::unique(("le_filter", app.focus_second));
+                let mut text = app.tab().name_filter.clone().unwrap_or_default();
+                let r = ui.add(egui::TextEdit::singleline(&mut text).id(id).hint_text("Name contains… (wildcards * ? allowed)").desired_width(360.0));
+                // Focus the box once when the bar opens.
+                let opened_key = Id::unique(("le_filter_opened", app.focus_second));
+                if !ui.ctx().data(|d| d.get_temp::<bool>(opened_key).unwrap_or(false)) {
+                    r.request_focus();
+                    ui.ctx().data_mut(|d| d.insert_temp(opened_key, true));
+                }
+                // keys.rs reads this: egui drops focus on Escape before we see it.
+                let focused = r.has_focus();
+                ui.ctx().data_mut(|d| d.insert_temp(Id::unique("le_filter_focused"), focused));
+                let close = ui.add(egui::Button::new("Close").frame_when_inactive(false)).clicked()
+                    || ((r.has_focus() || r.lost_focus()) && ui.input(|i| i.key_pressed(egui::Key::Escape)));
+                if close {
+                    ui.ctx().data_mut(|d| d.remove::<bool>(opened_key));
+                    app.cmd(Cmd::ToggleFilterBar);
+                } else if r.changed() {
+                    let s = app.settings.clone();
+                    let t = app.tab_mut();
+                    t.name_filter = Some(text);
+                    t.rebuild(&s);
+                }
+                let n = app.tab().visible.len();
+                ui.label(egui::RichText::new(format::items(n)).color(p.text_dim));
+            });
+        });
 }
 
 // ---------------------------------------------------------------------------
@@ -142,23 +263,67 @@ fn layout(app: &App, mode: ViewMode, view: Vec2, details_width: f32) -> Layout {
 // Details columns
 // ---------------------------------------------------------------------------
 
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum ColKey {
+    Sort(SortKey),
+    Accessed,
+    Owner,
+    Group,
+    Permissions,
+    Tags,
+    Rating,
+    Comment,
+    Git,
+}
+
 #[derive(Clone, Copy)]
 struct Column {
-    key: SortKey,
+    key: ColKey,
     label: &'static str,
     right: bool,
 }
 
-fn columns(loc: &Location) -> Vec<Column> {
-    let c = |key, label, right| Column { key, label, right };
-    match loc {
-        Location::RecycleBin => vec![
-            c(SortKey::Name, "Name", false),
-            c(SortKey::Extra, "Original Location", false),
-            c(SortKey::Deleted, "Date Deleted", false),
-            c(SortKey::Size, "Size", true),
-            c(SortKey::Type, "Item type", false),
-        ],
+/// Optional Details columns offered in the header menu: (settings key, label).
+pub const EXTRA_COLUMNS: &[(&str, &str)] = &[
+    ("created", "Date created"),
+    ("accessed", "Date accessed"),
+    ("owner", "Owner"),
+    ("group", "Group"),
+    ("permissions", "Permissions"),
+    ("tags", "Tags"),
+    ("rating", "Rating"),
+    ("comment", "Comment"),
+    ("git", "Git status"),
+];
+
+fn extra_column(key: &str) -> Option<Column> {
+    let c = |key, label, right| Some(Column { key, label, right });
+    match key {
+        "created" => c(ColKey::Sort(SortKey::Created), "Date created", false),
+        "accessed" => c(ColKey::Accessed, "Date accessed", false),
+        "owner" => c(ColKey::Owner, "Owner", false),
+        "group" => c(ColKey::Group, "Group", false),
+        "permissions" => c(ColKey::Permissions, "Permissions", false),
+        "tags" => c(ColKey::Tags, "Tags", false),
+        "rating" => c(ColKey::Rating, "Rating", false),
+        "comment" => c(ColKey::Comment, "Comment", false),
+        "git" => c(ColKey::Git, "Git status", false),
+        _ => None,
+    }
+}
+
+fn columns(loc: &Location, extra: &[String]) -> Vec<Column> {
+    let c = |key, label, right| Column { key: ColKey::Sort(key), label, right };
+    let mut v = match loc {
+        Location::RecycleBin => {
+            return vec![
+                c(SortKey::Name, "Name", false),
+                c(SortKey::Extra, "Original Location", false),
+                c(SortKey::Deleted, "Date Deleted", false),
+                c(SortKey::Size, "Size", true),
+                c(SortKey::Type, "Item type", false),
+            ]
+        }
         Location::Search { .. } => vec![
             c(SortKey::Name, "Name", false),
             c(SortKey::Modified, "Date modified", false),
@@ -172,36 +337,67 @@ fn columns(loc: &Location) -> Vec<Column> {
             c(SortKey::Type, "Type", false),
             c(SortKey::Size, "Size", true),
         ],
+    };
+    v.extend(extra.iter().filter_map(|k| extra_column(k)));
+    v
+}
+
+fn default_width(app: &App, c: &Column, i: usize) -> f32 {
+    let s = app.settings.column_widths;
+    match c.key {
+        ColKey::Sort(SortKey::Name) => s[0],
+        ColKey::Sort(SortKey::Modified) => s[1],
+        ColKey::Sort(SortKey::Type) => s[2],
+        ColKey::Sort(SortKey::Size) => s[3],
+        ColKey::Sort(SortKey::Extra) => if i == 1 { 260.0 } else { 320.0 },
+        ColKey::Sort(_) | ColKey::Accessed => 160.0,
+        ColKey::Permissions => 110.0,
+        ColKey::Rating => 100.0,
+        ColKey::Tags | ColKey::Comment => 180.0,
+        _ => 110.0,
     }
 }
 
-fn column_widths(app: &App, ui: &Ui, cols: &[Column]) -> Vec<f32> {
-    let key = Id::unique(("le_colw", cols.len(), cols.last().map(|c| c.label)));
-    ui.ctx().data(|d| d.get_temp::<Vec<f32>>(key)).unwrap_or_else(|| {
-        let s = app.settings.column_widths;
-        let mut v: Vec<f32> = s.to_vec();
-        if cols.len() == 5 {
-            if cols[1].key == SortKey::Extra {
-                v = vec![s[0], 260.0, 160.0, s[3], s[2]];
-            } else {
-                v.push(320.0);
-            }
-        }
-        v
-    })
+fn widths_id(cols: &[Column]) -> Id {
+    Id::unique(("le_colw", cols.iter().map(|c| c.label).collect::<Vec<_>>()))
 }
 
-fn cell_text(e: &Entry, key: SortKey) -> String {
+fn column_widths(app: &App, ui: &Ui, cols: &[Column]) -> Vec<f32> {
+    ui.ctx()
+        .data(|d| d.get_temp::<Vec<f32>>(widths_id(cols)))
+        .filter(|v| v.len() == cols.len())
+        .unwrap_or_else(|| cols.iter().enumerate().map(|(i, c)| default_width(app, c, i)).collect())
+}
+
+fn cell_text(app: &App, e: &Entry, key: ColKey) -> String {
+    let t = app.tab();
     match key {
-        SortKey::Name => e.name.clone(),
-        SortKey::Modified => format::datetime(e.modified),
-        SortKey::Created => format::datetime(e.created),
-        SortKey::Deleted => format::datetime(e.deleted),
-        SortKey::Type => type_description(e),
-        SortKey::Size => {
-            if e.is_dir() { String::new() } else { format::size_kb(e.size) }
+        ColKey::Sort(SortKey::Name) => e.name.clone(),
+        ColKey::Sort(SortKey::Modified) => format::datetime(e.modified),
+        ColKey::Sort(SortKey::Created) => format::datetime(e.created),
+        ColKey::Sort(SortKey::Deleted) => format::datetime(e.deleted),
+        ColKey::Sort(SortKey::Type) => type_description(e),
+        ColKey::Sort(SortKey::Size) => {
+            if !e.is_dir() {
+                format::size_kb(e.size)
+            } else if app.settings.folder_item_counts && e.deleted.is_none() {
+                t.item_count(&e.path).map(format::items).unwrap_or_default()
+            } else {
+                String::new()
+            }
         }
-        SortKey::Extra => e.extra.clone().unwrap_or_default(),
+        ColKey::Sort(SortKey::Extra) => e.extra.clone().unwrap_or_default(),
+        ColKey::Accessed => format::datetime(e.accessed),
+        ColKey::Owner => explorer_core::props::user_name(e.uid),
+        ColKey::Group => explorer_core::props::group_name(e.gid),
+        ColKey::Permissions => explorer_core::props::mode_string(e.mode, e.is_dir()),
+        ColKey::Tags => t.meta(&e.path).tags.join(", "),
+        ColKey::Rating => {
+            let s = t.meta(&e.path).stars;
+            if s == 0 { String::new() } else { "★".repeat(s as usize) + &"☆".repeat(5 - s as usize) }
+        }
+        ColKey::Comment => t.meta(&e.path).comment,
+        ColKey::Git => t.git.get(&e.path).map(|g| g.label().to_string()).unwrap_or_default(),
     }
 }
 
@@ -215,7 +411,7 @@ fn display_name(app: &App, e: &Entry) -> String {
 
 fn details_header(app: &mut App, ui: &mut Ui, cols: &[Column], widths: &mut [f32], x0: f32) -> f32 {
     let p = app.palette;
-    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 32.0), Sense::hover());
+    let (rect, bg) = ui.allocate_exact_size(vec2(ui.available_width(), 32.0), Sense::click());
     let sort = app.tab().view.sort;
     let mut x = rect.left() + x0;
     let mut cmds = Vec::new();
@@ -229,7 +425,7 @@ fn details_header(app: &mut App, ui: &mut Ui, cols: &[Column], widths: &mut [f32
         let g = widgets::truncated(ui, c.label, font, p.text_dim, r.width() - 20.0);
         let tx = if c.right { r.right() - 12.0 - g.size().x } else { r.left() + 10.0 };
         ui.painter().galley(pos2(tx, r.center().y - g.size().y / 2.0 + 2.0), g, p.text_dim);
-        if sort.key == c.key {
+        if c.key == ColKey::Sort(sort.key) {
             // Win11 puts a small chevron above the label.
             let cx = r.center().x;
             let up = sort.ascending;
@@ -245,8 +441,11 @@ fn details_header(app: &mut App, ui: &mut Ui, cols: &[Column], widths: &mut [f32
             ui.painter().line_segment([pos2(r.left(), r.top() + 6.0), pos2(r.left(), r.bottom() - 6.0)], Stroke::new(1.0, p.border));
         }
         if resp.clicked() {
-            cmds.push(Cmd::SortBy(c.key));
+            if let ColKey::Sort(k) = c.key {
+                cmds.push(Cmd::SortBy(k));
+            }
         }
+        column_menu(app, &resp, &mut cmds);
         // Column resize grip.
         let grip = Rect::from_center_size(pos2(r.right(), r.center().y), vec2(8.0, r.height()));
         let g = ui.interact(grip, ui.scope_id().with(("grip", i)), Sense::drag());
@@ -261,18 +460,38 @@ fn details_header(app: &mut App, ui: &mut Ui, cols: &[Column], widths: &mut [f32
         }
         x += widths[i];
     }
+    column_menu(app, &bg, &mut cmds);
     for c in cmds {
         app.cmd(c);
     }
     rect.bottom()
 }
 
-fn auto_width(app: &App, ui: &Ui, key: SortKey) -> f32 {
+/// Right-click on the header: choose columns (Explorer "More…", Dolphin).
+fn column_menu(app: &App, resp: &Response, cmds: &mut Vec<Cmd>) {
+    let extra = app.settings.extra_columns.clone();
+    resp.context_menu(|ui| {
+        ui.label(egui::RichText::new("Columns").weak());
+        for (key, label) in EXTRA_COLUMNS {
+            let mut on = extra.iter().any(|x| x == key);
+            if ui.checkbox(&mut on, *label).changed() {
+                cmds.push(Cmd::ToggleColumn(key.to_string()));
+            }
+        }
+        ui.separator();
+        if ui.button("Size all columns to fit").clicked() {
+            cmds.push(Cmd::Refresh);
+            ui.close();
+        }
+    });
+}
+
+fn auto_width(app: &App, ui: &Ui, key: ColKey) -> f32 {
     let font = FontId::proportional(13.5);
     let mut w: f32 = 80.0;
     for e in app.tab().visible.iter().take(2000) {
-        let s = cell_text(e, key);
-        w = w.max(ui.painter().layout_no_wrap(s, font.clone(), Color32::WHITE).size().x + if key == SortKey::Name { 48.0 } else { 24.0 });
+        let s = cell_text(app, e, key);
+        w = w.max(ui.painter().layout_no_wrap(s, font.clone(), Color32::WHITE).size().x + if key == ColKey::Sort(SortKey::Name) { 48.0 } else { 24.0 });
     }
     w.min(900.0)
 }
@@ -316,15 +535,14 @@ fn items_view(app: &mut App, ui: &mut Ui) {
         }
     }
 
-    let cols = columns(&app.tab().loc);
+    let cols = columns(&app.tab().loc, &app.settings.extra_columns);
     let mut widths = column_widths(app, ui, &cols);
     let check_w = if app.settings.show_checkboxes { 24.0 } else { 0.0 };
     if mode == ViewMode::Details {
         ui.spacing_mut().item_spacing.y = 0.0;
         details_header(app, ui, &cols, &mut widths, 6.0 + check_w);
-        let key = Id::unique(("le_colw", cols.len(), cols.last().map(|c| c.label)));
-        ctx.data_mut(|d| d.insert_temp(key, widths.clone()));
-        if cols.len() == 4 && matches!(app.tab().loc, Location::Path(_)) {
+        ctx.data_mut(|d| d.insert_temp(widths_id(&cols), widths.clone()));
+        if matches!(app.tab().loc, Location::Path(_)) && cols.len() >= 4 {
             app.settings.column_widths = [widths[0], widths[1], widths[2], widths[3]];
         }
     }
@@ -336,7 +554,7 @@ fn items_view(app: &mut App, ui: &mut Ui) {
     let mut geo = Geometry { cols: lay.cols, page_rows, column_major: !m.row_major, focus_rect: None };
 
     let scroll = if m.row_major { egui::ScrollArea::vertical() } else { egui::ScrollArea::horizontal() };
-    let scroll_id = Id::unique(("le_scroll", app.active, app.tab().loc.address_text()));
+    let scroll_id = Id::unique(("le_scroll", app.active, app.focus_second, app.tab().loc.address_text()));
     scroll.id_salt(scroll_id).auto_shrink([false, false]).show_viewport(ui, |ui, viewport| {
         let (content, bg) = ui.allocate_exact_size(lay.size.max(viewport.size()), Sense::click_and_drag());
         let origin = content.min;
@@ -416,7 +634,8 @@ fn items_view(app: &mut App, ui: &mut Ui) {
             let drop_target = e.is_dir() && resp.dnd_hover_payload::<DragPaths>().is_some_and(|pl| !pl.0.contains(&e.path));
             paint_item_bg(ui, sr, &resp, selected, drop_target, Some(i) == focus && ui.memory(|m| m.focused().is_none()), &p);
             let dim = cut_set.contains(&e.path) || e.hidden;
-            paint_item(app, ui, sr, &e, mode, &cols, &widths, check_w, selected, dim);
+            let depth = app.tab().depth.get(i).copied().unwrap_or(0);
+            paint_item(app, ui, sr, &e, mode, &cols, &widths, check_w, selected, dim, depth);
             item_interaction(app, ui, i, &e, &resp, sr, selected, check_w);
         }
 
@@ -531,10 +750,24 @@ fn paint_icon(app: &mut App, ui: &Ui, r: Rect, e: &Entry, dim: bool) {
     if e.is_symlink {
         icons::link_overlay(ui.painter(), r);
     }
+    // Git status badge (Dolphin's version-control plugin).
+    if let Some(g) = app.tab().git.get(&e.path) {
+        use explorer_core::git::GitState;
+        let col = match g {
+            GitState::Modified => Color32::from_rgb(0xE8, 0x8B, 0x1A),
+            GitState::Added => Color32::from_rgb(0x2E, 0xA0, 0x43),
+            GitState::Untracked => Color32::from_rgb(0x8A, 0x8A, 0x8A),
+            GitState::Conflict => Color32::from_rgb(0xD1, 0x34, 0x38),
+            GitState::Deleted => Color32::from_rgb(0xD1, 0x34, 0x38),
+        };
+        let rad = (r.width() * 0.2).clamp(3.0, 9.0);
+        let c = r.right_bottom() - vec2(rad * 0.8, rad * 0.8);
+        ui.painter().circle(c, rad, col, Stroke::new(1.0, app.palette.content));
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
-fn paint_item(app: &mut App, ui: &mut Ui, r: Rect, e: &Entry, mode: ViewMode, cols: &[Column], widths: &[f32], check_w: f32, selected: bool, dim: bool) {
+fn paint_item(app: &mut App, ui: &mut Ui, r: Rect, e: &Entry, mode: ViewMode, cols: &[Column], widths: &[f32], check_w: f32, selected: bool, dim: bool, depth: u8) {
     let p = app.palette;
     let text_col = if dim { p.text_dim } else { p.text };
     let name = display_name(app, e);
@@ -557,7 +790,19 @@ fn paint_item(app: &mut App, ui: &mut Ui, r: Rect, e: &Entry, mode: ViewMode, co
                 let w = widths[ci];
                 let cell = Rect::from_min_size(pos2(x, r.top()), vec2(w, r.height()));
                 if ci == 0 {
-                    let ir = Rect::from_center_size(pos2(cell.left() + 16.0, r.center().y), vec2(18.0, 18.0));
+                    // Expandable folders: indent by depth with a disclosure chevron.
+                    let tree = app.settings.expandable_folders && app.tab().groups.is_empty() && matches!(app.tab().loc, Location::Path(_));
+                    let indent = if tree { 16.0 + depth as f32 * 18.0 } else { 0.0 };
+                    if tree && e.is_dir() {
+                        let open = app.tab().expanded.contains(&e.path);
+                        let cr = Rect::from_center_size(pos2(cell.left() + 6.0 + depth as f32 * 18.0 + 6.0, r.center().y), vec2(16.0, r.height()));
+                        let cresp = ui.interact(cr, ui.scope_id().with(("expand", &e.path)), Sense::click());
+                        icons::chevron(ui.painter(), cr.center(), 7.0, open, if cresp.hovered() { p.text } else { p.text_dim });
+                        if cresp.clicked() {
+                            app.cmd(Cmd::ToggleExpand(e.path.clone()));
+                        }
+                    }
+                    let ir = Rect::from_center_size(pos2(cell.left() + 16.0 + indent, r.center().y), vec2(18.0, 18.0));
                     paint_icon(app, ui, ir, e, dim);
                     let tr = Rect::from_min_max(pos2(ir.right() + 8.0, r.top()), pos2(cell.right() - 6.0, r.bottom()));
                     if renaming {
@@ -567,7 +812,7 @@ fn paint_item(app: &mut App, ui: &mut Ui, r: Rect, e: &Entry, mode: ViewMode, co
                         ui.painter().galley(pos2(tr.left(), r.center().y - g.size().y / 2.0), g, text_col);
                     }
                 } else {
-                    let s = cell_text(e, c.key);
+                    let s = cell_text(app, e, c.key);
                     let g = widgets::truncated(ui, &s, font.clone(), p.text_dim, w - 20.0);
                     let tx = if c.right { cell.right() - 12.0 - g.size().x } else { cell.left() + 10.0 };
                     ui.painter().galley(pos2(tx, r.center().y - g.size().y / 2.0), g, p.text_dim);
@@ -943,6 +1188,32 @@ fn this_pc_page(app: &mut App, ui: &mut Ui) {
                     }
                 });
             }
+            // Devices that are present but not mounted (Dolphin lists these in Places).
+            let vols = app.volumes();
+            if !vols.is_empty() {
+                ui.add_space(14.0);
+                let id = Id::unique("le_pc_other");
+                let mut open = ui.ctx().data(|d| d.get_temp::<bool>(id)).unwrap_or(true);
+                section_header(ui, "Other devices (not mounted)", &mut open, &p);
+                ui.ctx().data_mut(|d| d.insert_temp(id, open));
+                if open {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.spacing_mut().item_spacing = vec2(8.0, 8.0);
+                        for v in vols {
+                            let sub = match v.kind {
+                                explorer_core::devices::VolumeKind::Phone => "Phone or camera · click to open".to_string(),
+                                _ => format!("{} {} · click to mount", format::size_human(v.size), v.fs_type),
+                            };
+                            let icon = Icon::Drive { removable: v.removable, system: false };
+                            let resp = tile(ui, app, vec2(300.0, 64.0), icon, &v.label, &sub, Id::unique(("vol", &v.id)));
+                            if resp.clicked() {
+                                app.cmd(Cmd::MountVolume(v.clone()));
+                            }
+                            resp.on_hover_text(&v.id);
+                        }
+                    });
+                }
+            }
         });
     });
 }
@@ -972,12 +1243,7 @@ fn network_page(app: &mut App, ui: &mut Ui) {
         ui.horizontal(|ui| {
             ui.add(egui::TextEdit::singleline(&mut uri).hint_text("smb://server/share").desired_width(360.0));
             if ui.button("Connect").clicked() && !uri.is_empty() {
-                let status = std::process::Command::new("gio").args(["mount", &uri]).status();
-                match status {
-                    Ok(s) if s.success() => app.notify(format!("Connected to {uri}")),
-                    Ok(s) => app.error("Connect", format!("gio mount failed ({s})")),
-                    Err(e) => app.error("Connect", format!("gio: {e}")),
-                }
+                app.cmd(Cmd::ConnectUri(uri.trim().to_string(), None));
             }
         });
         ui.ctx().data_mut(|d| d.insert_temp(id, uri));

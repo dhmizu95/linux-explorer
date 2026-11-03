@@ -5,12 +5,14 @@
 mod app;
 mod chrome;
 mod dialogs;
+mod dialogs2;
 mod icons;
 mod keys;
 mod menus;
 mod nav;
 mod preview;
 mod tab;
+mod term;
 mod theme;
 mod thumbs;
 mod view;

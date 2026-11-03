@@ -17,6 +17,7 @@ use explorer_core::settings::{LaunchTo, Settings, Theme};
 
 use crate::app::{App, Cmd};
 use crate::icons::{self, Icon};
+pub use crate::dialogs2::{AdminPrompt, BatchRename, Credentials};
 
 #[derive(Clone, Debug)]
 pub enum ConfirmAction {
@@ -64,6 +65,10 @@ pub struct Dialogs {
     pub confirm: Option<ConfirmAction>,
     pub error: Option<(String, String)>,
     pub open_with: Option<OpenWith>,
+    pub batch: Option<BatchRename>,
+    pub credentials: Option<Credentials>,
+    pub admin: Option<AdminPrompt>,
+    pub shortcuts: bool,
     next_id: u64,
 }
 
@@ -73,7 +78,12 @@ impl Dialogs {
     }
 
     pub fn any_modal(&self) -> bool {
-        self.confirm.is_some() || self.error.is_some() || self.open_with.is_some()
+        self.confirm.is_some()
+            || self.error.is_some()
+            || self.open_with.is_some()
+            || self.batch.is_some()
+            || self.credentials.is_some()
+            || self.admin.is_some()
     }
 
     pub fn open_properties(&mut self, entries: Vec<Entry>, drive: Option<Drive>, app: Option<DesktopApp>, bin: bool) {
@@ -124,6 +134,10 @@ pub fn show_all(app: &mut App, ctx: &egui::Context) {
     options(app, ctx);
     confirm(app, ctx);
     open_with(app, ctx);
+    crate::dialogs2::batch_rename(app, ctx);
+    crate::dialogs2::credentials(app, ctx);
+    crate::dialogs2::admin(app, ctx);
+    crate::dialogs2::shortcuts(app, ctx);
     error(app, ctx);
 }
 
@@ -567,6 +581,7 @@ fn options(app: &mut App, ctx: &egui::Context) {
         ui.checkbox(&mut draft.show_status_bar, "Show status bar");
         ui.checkbox(&mut draft.compact, "Decrease space between items (compact view)");
         ui.checkbox(&mut draft.confirm_recycle, "Display delete confirmation dialog");
+        crate::dialogs2::options_extra(ui, &mut draft);
         ui.horizontal(|ui| {
             ui.label("Theme:");
             ui.radio_value(&mut draft.theme, Theme::System, "Use system setting");

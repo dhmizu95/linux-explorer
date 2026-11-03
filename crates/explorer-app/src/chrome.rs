@@ -516,6 +516,11 @@ fn address_edit(app: &mut App, ui: &mut Ui, rect: Rect) {
         let cwd = app.current_dir();
         app.tab_mut().address_edit = None;
         let raw = text.trim().to_string();
+        if explorer_core::devices::is_network_uri(&raw) {
+            // smb://, sftp://, ftp://, dav://, mtp:// go through GVfs.
+            app.cmd(Cmd::ConnectUri(raw, None));
+            return;
+        }
         match location::parse_address(&raw, cwd.as_deref()) {
             Some(Location::Path(pth)) if !pth.exists() => {
                 // Maybe a command, like Explorer's address bar runs programs.
@@ -634,48 +639,67 @@ pub fn command_bar(app: &mut App, ui: &mut Ui) {
                         app.cmd(Cmd::Delete { permanent: true });
                     }
                 } else {
+                    let shown = |k: &str| !app.settings.toolbar_hidden.iter().any(|h| h == k);
+                    let (s_cut, s_copy, s_paste, s_rename, s_term, s_del) =
+                        (shown("cut"), shown("copy"), shown("paste"), shown("rename"), shown("terminal"), shown("delete"));
                     new_menu(app, ui, in_folder);
                     separator(ui, &p);
-                    let cut = widgets::glyph_button(ui, Glyph::Cut, has_sel && in_folder_or_search(&loc), &p).on_hover_text("Cut (Ctrl+X)");
-                    if cut.clicked() {
+                    if s_cut && widgets::glyph_button(ui, Glyph::Cut, has_sel && in_folder_or_search(&loc), &p).on_hover_text("Cut (Ctrl+X)").clicked() {
                         app.cmd(Cmd::Cut);
                     }
-                    if widgets::glyph_button(ui, Glyph::Copy, has_sel && in_folder_or_search(&loc), &p).on_hover_text("Copy (Ctrl+C)").clicked() {
+                    if s_copy && widgets::glyph_button(ui, Glyph::Copy, has_sel && in_folder_or_search(&loc), &p).on_hover_text("Copy (Ctrl+C)").clicked() {
                         app.cmd(Cmd::Copy);
                     }
-                    let can_paste = in_folder && app.clip.is_some();
-                    if widgets::glyph_button(ui, Glyph::Paste, can_paste || in_folder, &p).on_hover_text("Paste (Ctrl+V)").clicked() {
+                    if s_paste && widgets::glyph_button(ui, Glyph::Paste, in_folder, &p).on_hover_text("Paste (Ctrl+V)").clicked() {
                         app.cmd(Cmd::Paste(None));
                     }
-                    if widgets::glyph_button(ui, Glyph::Rename, has_sel && in_folder, &p).on_hover_text("Rename (F2)").clicked() {
+                    if s_rename && widgets::glyph_button(ui, Glyph::Rename, has_sel && in_folder, &p).on_hover_text("Rename (F2; several items: batch rename)").clicked() {
                         app.cmd(Cmd::StartRename);
                     }
-                    if widgets::glyph_button(ui, Glyph::Terminal, app.current_dir().is_some(), &p).on_hover_text("Open in Terminal").clicked() {
+                    if s_term && widgets::glyph_button(ui, Glyph::Terminal, app.current_dir().is_some(), &p).on_hover_text("Open in Terminal").clicked() {
                         if let Some(d) = app.current_dir() {
                             app.cmd(Cmd::OpenTerminal(d));
                         }
                     }
-                    if widgets::glyph_button(ui, Glyph::Delete, has_sel && in_folder_or_search(&loc), &p).on_hover_text("Delete (Del)").clicked() {
+                    if s_del && widgets::glyph_button(ui, Glyph::Delete, has_sel && in_folder_or_search(&loc), &p).on_hover_text("Delete (Del)").clicked() {
                         app.cmd(Cmd::Delete { permanent: false });
                     }
                     separator(ui, &p);
                 }
                 sort_menu(app, ui);
                 view_menu(app, ui);
-                if !bin {
+                if !bin && !app.settings.toolbar_hidden.iter().any(|h| h == "filter") {
                     filter_menu(app, ui);
                 }
                 more_menu(app, ui);
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    let on = app.settings.show_details_pane;
-                    let r = widgets::toggle_text_button(ui, Some(Glyph::DetailsPane), "Details", on, &p).on_hover_text("Show the details pane (Alt+Shift+P)");
-                    if r.clicked() {
-                        app.cmd(Cmd::ToggleDetailsPane);
+                    let shown = |k: &str| !app.settings.toolbar_hidden.iter().any(|h| h == k);
+                    let (s_details, s_preview, s_split, s_tp) = (shown("details"), shown("preview"), shown("split"), shown("termpanel"));
+                    if s_details {
+                        let on = app.settings.show_details_pane;
+                        let r = widgets::toggle_text_button(ui, Some(Glyph::DetailsPane), "Details", on, &p).on_hover_text("Show the details pane (Alt+Shift+P)");
+                        if r.clicked() {
+                            app.cmd(Cmd::ToggleDetailsPane);
+                        }
                     }
-                    let on = app.settings.show_preview_pane;
-                    let r = widgets::toggle_text_button(ui, Some(Glyph::PreviewPane), "Preview", on, &p).on_hover_text("Show the preview pane (Alt+P)");
-                    if r.clicked() {
-                        app.cmd(Cmd::TogglePreview);
+                    if s_preview {
+                        let on = app.settings.show_preview_pane;
+                        let r = widgets::toggle_text_button(ui, Some(Glyph::PreviewPane), "Preview", on, &p).on_hover_text("Show the preview pane (Alt+P)");
+                        if r.clicked() {
+                            app.cmd(Cmd::TogglePreview);
+                        }
+                    }
+                    if s_tp {
+                        let on = app.show_terminal;
+                        if widgets::toggle_text_button(ui, Some(Glyph::Terminal), "Terminal", on, &p).on_hover_text("Terminal panel (Ctrl+`)").clicked() {
+                            app.cmd(Cmd::ToggleTerminal);
+                        }
+                    }
+                    if s_split {
+                        let on = app.second.is_some();
+                        if widgets::toggle_text_button(ui, Some(Glyph::Split), "Split", on, &p).on_hover_text("Split view (Ctrl+Shift+S)").clicked() {
+                            app.cmd(Cmd::ToggleSplit);
+                        }
                     }
                 });
             });
@@ -894,11 +918,24 @@ fn more_menu(app: &mut App, ui: &mut Ui) {
             cmd = Some(Cmd::NewWindow(None));
         }
         ui.separator();
+        if ui.add(egui::Button::new("Split view").shortcut_text("Ctrl+Shift+S")).clicked() {
+            cmd = Some(Cmd::ToggleSplit);
+        }
+        if ui.add(egui::Button::new("Terminal panel").shortcut_text("Ctrl+`")).clicked() {
+            cmd = Some(Cmd::ToggleTerminal);
+        }
+        if ui.add(egui::Button::new("Filter bar").shortcut_text("Ctrl+I")).clicked() {
+            cmd = Some(Cmd::ToggleFilterBar);
+        }
+        ui.separator();
         if ui.add(egui::Button::new("Properties").shortcut_text("Alt+Enter")).clicked() {
             cmd = Some(Cmd::Properties);
         }
         if ui.button("Options").clicked() {
             cmd = Some(Cmd::Options);
+        }
+        if ui.add(egui::Button::new("Keyboard shortcuts").shortcut_text("F1")).clicked() {
+            cmd = Some(Cmd::ShowShortcuts);
         }
     });
     if let Some(c) = cmd {
@@ -961,6 +998,19 @@ pub fn status_bar(app: &mut App, ui: &mut Ui) {
                         .clicked()
                     {
                         app.cmd(Cmd::SetView(ViewMode::Details));
+                    }
+                    // Free space on the current drive (Dolphin's status bar).
+                    if app.settings.show_free_space {
+                        if let Some((total, free)) = app.current_dir().and_then(|d| places::statvfs(&d)) {
+                            ui.add_space(12.0);
+                            let (bar, _) = ui.allocate_exact_size(vec2(80.0, 6.0), Sense::hover());
+                            let frac = if total > 0 { 1.0 - free as f32 / total as f32 } else { 0.0 };
+                            ui.painter().rect_filled(bar, CornerRadius::same(2), p.drive_bar_bg);
+                            let col = if frac > 0.9 { p.danger } else { p.drive_bar };
+                            ui.painter().rect_filled(Rect::from_min_size(bar.min, vec2(bar.width() * frac, bar.height())), CornerRadius::same(2), col);
+                            ui.add_space(6.0);
+                            ui.label(egui::RichText::new(format!("{} free", format::size_human(free))).size(12.0).color(p.text_dim));
+                        }
                     }
                 });
             });

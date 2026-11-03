@@ -22,6 +22,12 @@ type Binding = (Modifiers, Key, fn() -> Cmd);
 // `consume_key` ignores an extra Shift, so Shift combinations must come before
 // their unshifted twins in these tables.
 const GLOBAL: &[Binding] = &[
+    (Modifiers::COMMAND.plus(Modifiers::SHIFT), Key::S, || Cmd::ToggleSplit),
+    (Modifiers::COMMAND, Key::Backtick, || Cmd::ToggleTerminal),
+    (Modifiers::COMMAND, Key::I, || Cmd::ToggleFilterBar),
+    (Modifiers::COMMAND, Key::H, || Cmd::ToggleHidden),
+    (Modifiers::ALT, Key::Period, || Cmd::ToggleHidden),
+    (Modifiers::NONE, Key::F1, || Cmd::ShowShortcuts),
     (Modifiers::COMMAND.plus(Modifiers::SHIFT), Key::N, || Cmd::NewFolder),
     (Modifiers::COMMAND.plus(Modifiers::SHIFT), Key::C, || Cmd::CopyAsPath),
     (Modifiers::COMMAND.plus(Modifiers::SHIFT), Key::E, || Cmd::RevealInNav),
@@ -71,8 +77,19 @@ impl App {
         let dialog = self.dialogs.any_modal() || self.ctx_menu.is_some();
         let geo = crate::view::geometry(ctx);
         let typeahead_active = !self.tab().type_ahead.0.is_empty();
+        let in_terminal = self.terminal_focused && self.show_terminal;
+        let filter_had_focus = self.tab().name_filter.is_some()
+            && ctx.data(|d| d.get_temp::<bool>(egui::Id::unique("le_filter_focused")).unwrap_or(false));
+        let tree = self.settings.expandable_folders && self.tab().view.mode == ViewMode::Details;
         let mut acts: Vec<KeyAct> = Vec::new();
         ctx.input_mut(|i| {
+            // The terminal panel gets every key except its own toggle.
+            if in_terminal {
+                if i.consume_key(Modifiers::COMMAND, Key::Backtick) {
+                    acts.push(KeyAct::Cmd(Cmd::ToggleTerminal));
+                }
+                return;
+            }
             // eframe's clipboard shortcuts are off (an empty text clipboard would
             // swallow Ctrl+V); give text fields their clipboard events back.
             if typing {
@@ -185,6 +202,15 @@ impl App {
                     acts.push(KeyAct::Move { delta: d, shift, ctrl });
                 }
             }
+            // Details tree: Right expands, Left collapses (Dolphin).
+            if tree && geo.cols <= 1 && !m.alt {
+                if i.key_pressed(Key::ArrowRight) {
+                    acts.push(KeyAct::Cmd(Cmd::ExpandFocused(true)));
+                }
+                if i.key_pressed(Key::ArrowLeft) {
+                    acts.push(KeyAct::Cmd(Cmd::ExpandFocused(false)));
+                }
+            }
             if i.key_pressed(Key::Home) {
                 acts.push(KeyAct::Edge { end: false, shift });
             }
@@ -204,7 +230,7 @@ impl App {
                 }
             }
             if i.consume_key(Modifiers::NONE, Key::Escape) {
-                acts.push(KeyAct::Cmd(Cmd::SelectNone));
+                acts.push(KeyAct::Cmd(if filter_had_focus { Cmd::ToggleFilterBar } else { Cmd::SelectNone }));
             }
         });
 

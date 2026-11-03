@@ -3,6 +3,10 @@
 A file manager for **Fedora and Ubuntu** that looks and behaves like **Windows 11 File Explorer**, written in Rust
 ([egui](https://github.com/emilk/egui) + a UI-free core library).
 
+On top of the Explorer feel it adds Dolphin's power features: split view, an embedded terminal, a filter bar,
+expandable folders, batch rename, Dolphin-compatible tags and ratings, service menus, Git badges, network shares
+(smb/sftp/ftp/dav), mounting drives and phones, archives as folders, and retrying with administrator rights.
+
 Tabs in the title bar, a breadcrumb address bar, a command bar with New / Sort / View / Filter, a navigation
 pane with Home, pinned folders and This PC, eight view modes, grouping, a Recycle Bin, Properties and Folder
 Options. The keyboard shortcuts are Explorer's.
@@ -33,6 +37,9 @@ Optional runtime helpers, used when present:
 | Network shares | `gio` | `glib2` | `libglib2.0-bin` |
 | Extract .7z / .rar | `7z` | `p7zip` | `p7zip-full` |
 | Open in Terminal | ptyxis, gnome-terminal, konsole, … | preinstalled | preinstalled |
+| Video / PDF thumbnails | `ffmpegthumbnailer`, `pdftoppm` | `ffmpegthumbnailer`, `poppler-utils` | `ffmpegthumbnailer`, `poppler-utils` |
+| Mount drives, phones | `udisksctl`, `gio` + gvfs-mtp | `udisks2`, `gvfs-mtp` | `udisks2`, `gvfs-backends` |
+| Admin retry | `pkexec` | `polkit` | `pkexec` |
 
 ### Packages
 
@@ -61,7 +68,12 @@ By default the app draws its own Windows 11 title bar: tabs, plus minimize/maxim
 | Alt+← / Alt+→ / Alt+↑ / Backspace | Back / Forward / Up / Back |
 | Alt+D, Ctrl+L, F4 | Address bar |
 | Ctrl+E, Ctrl+F, F3 | Search |
-| F2 (then Tab / Shift+Tab) | Rename (and move to next / previous) |
+| Ctrl+I | Filter bar (Dolphin) |
+| Ctrl+Shift+S | Split view (Dolphin) |
+| Ctrl+&#96; | Embedded terminal panel (Dolphin) |
+| Ctrl+H, Alt+. | Show hidden files |
+| → / ← in Details | Expand / collapse folder inline |
+| F2 (then Tab / Shift+Tab) | Rename (and move to next / previous); several selected: batch rename |
 | Ctrl+Shift+N | New folder |
 | Ctrl+C / Ctrl+X / Ctrl+V | Copy / Cut / Paste |
 | Ctrl+Z / Ctrl+Y | Undo / Redo |
@@ -74,10 +86,10 @@ By default the app draws its own Windows 11 title bar: tabs, plus minimize/maxim
 | Ctrl+Shift+C | Copy as path |
 | Ctrl+Shift+E | Expand the navigation pane to the current folder |
 | Shift+F10 | Context menu |
-| F5, F11 | Refresh, full screen |
+| F5, F11, F1 | Refresh, full screen, shortcut list |
 
-Search accepts Explorer's filters: `*.pdf`, `kind:picture`, `ext:.rs`, `size:>10MB`, `size:large`,
-`modified:thisweek`.
+Search accepts Explorer's filters (`*.pdf`, `kind:picture`, `ext:.rs`, `size:>10MB`, `size:large`,
+`modified:thisweek`) plus Dolphin-style `content:"text"`, `tag:work` and `rating:4`.
 
 ## Layout
 

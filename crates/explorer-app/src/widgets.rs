@@ -35,6 +35,7 @@ pub enum Glyph {
     ViewDetails,
     ViewLarge,
     Undo,
+    Split,
 }
 
 /// Draw a glyph inside `r` using 1.2 px strokes.
@@ -151,6 +152,10 @@ pub fn paint_glyph(p: &Painter, r: Rect, g: Glyph, color: Color32) {
             for i in 0..3 {
                 p.circle_filled(pos2(l + w * (0.15 + 0.35 * i as f32), cy), 1.4, color);
             }
+        }
+        Glyph::Split => {
+            p.rect_stroke(r, CornerRadius::same(2), st, StrokeKind::Inside);
+            line(vec![pos2(cx, t), pos2(cx, b)]);
         }
         Glyph::DetailsPane | Glyph::PreviewPane => {
             p.rect_stroke(r, CornerRadius::same(2), st, StrokeKind::Inside);

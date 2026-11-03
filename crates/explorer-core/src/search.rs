@@ -29,6 +29,12 @@ pub struct Query {
     pub ext: Option<String>,
     pub size: Option<SizeFilter>,
     pub modified: Option<String>,
+    /// `content:word` full-text match.
+    pub content: Option<String>,
+    /// `tag:name` (Dolphin/Baloo tags).
+    pub tag: Option<String>,
+    /// `rating:N` minimum stars.
+    pub rating: Option<u8>,
 }
 
 pub fn parse_query(q: &str) -> Query {
@@ -47,6 +53,18 @@ pub fn parse_query(q: &str) -> Query {
                 }
                 "size" => {
                     out.size = parse_size_filter(v);
+                    continue;
+                }
+                "content" | "contains" => {
+                    out.content = Some(tok.split_once(':').map(|x| x.1.to_lowercase()).unwrap_or_default());
+                    continue;
+                }
+                "tag" | "tags" => {
+                    out.tag = Some(v.to_string());
+                    continue;
+                }
+                "rating" => {
+                    out.rating = v.trim_start_matches(">=").trim_start_matches('>').parse().ok();
                     continue;
                 }
                 "modified" | "datemodified" | "date" => {
@@ -151,7 +169,7 @@ pub fn wildcard(pat: &str, name: &str) -> bool {
 
 impl Query {
     pub fn is_empty(&self) -> bool {
-        self.terms.is_empty() && self.kind.is_none() && self.ext.is_none() && self.size.is_none() && self.modified.is_none()
+        self.terms.is_empty() && self.kind.is_none() && self.ext.is_none() && self.size.is_none() && self.modified.is_none() && self.content.is_none() && self.tag.is_none() && self.rating.is_none()
     }
 
     pub fn matches(&self, e: &Entry, today: NaiveDate) -> bool {
@@ -205,8 +223,41 @@ impl Query {
                 return false;
             }
         }
+        // Metadata and content filters read the file, so they go last.
+        if self.tag.is_some() || self.rating.is_some() {
+            let m = crate::meta::read(&e.path);
+            if let Some(t) = &self.tag {
+                if !m.tags.iter().any(|x| x.to_lowercase() == *t) {
+                    return false;
+                }
+            }
+            if let Some(r) = self.rating {
+                if m.stars < r {
+                    return false;
+                }
+            }
+        }
+        if let Some(needle) = &self.content {
+            if e.kind != EntryKind::File || !file_contains(&e.path, needle) {
+                return false;
+            }
+        }
         true
     }
+}
+
+/// Case-insensitive full-text match for text files up to 16 MiB (no index,
+/// like Explorer searching a non-indexed location).
+pub fn file_contains(p: &Path, needle: &str) -> bool {
+    let Ok(meta) = std::fs::metadata(p) else { return false };
+    if meta.len() > 16 << 20 {
+        return false;
+    }
+    let Ok(bytes) = std::fs::read(p) else { return false };
+    if bytes.iter().take(8192).any(|b| *b == 0) {
+        return false;
+    }
+    String::from_utf8_lossy(&bytes).to_lowercase().contains(needle)
 }
 
 fn same_month(a: NaiveDate, b: NaiveDate) -> bool {
@@ -311,6 +362,26 @@ mod tests {
         assert_eq!(q.ext.as_deref(), Some("pdf"));
         assert_eq!(q.size, Some(SizeFilter::Greater(1_572_864)));
         assert_eq!(q.modified.as_deref(), Some("thisweek"));
+    }
+
+    #[test]
+    fn content_and_tag_search() {
+        let home = std::env::var("HOME").unwrap();
+        let t = tempfile::tempdir_in(home).unwrap();
+        fs::write(t.path().join("a.txt"), "The Quarterly Report is due").unwrap();
+        fs::write(t.path().join("b.txt"), "nothing here").unwrap();
+        fs::write(t.path().join("c.bin"), b"quarterly\x00report").unwrap();
+        let q = parse_query("content:\"quarterly report\"");
+        assert_eq!(q.content.as_deref(), Some("quarterly report"));
+        let r = search_blocking(t.path(), "content:\"quarterly report\"", false);
+        assert_eq!(r.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(), vec!["a.txt"]);
+        let m = crate::meta::Meta { tags: vec!["Work".into()], stars: 3, comment: String::new() };
+        if crate::meta::write(&t.path().join("b.txt"), &m).is_ok() {
+            let r = search_blocking(t.path(), "tag:work rating:3", false);
+            assert_eq!(r.len(), 1);
+            assert_eq!(r[0].name, "b.txt");
+            assert!(search_blocking(t.path(), "rating:4", false).is_empty());
+        }
     }
 
     #[test]

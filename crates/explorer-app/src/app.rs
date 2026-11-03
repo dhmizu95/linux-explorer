@@ -125,6 +125,21 @@ pub enum Cmd {
     FocusAddress,
     FocusSearch,
     Confirmed(ConfirmAction),
+    ToggleSplit,
+    FocusPane(bool),
+    ToggleTerminal,
+    ToggleFilterBar,
+    ToggleExpand(PathBuf),
+    ExpandFocused(bool),
+    BatchRename,
+    MountVolume(explorer_core::devices::Volume),
+    ConnectUri(String, Option<(String, String, String)>),
+    AdminRetry { kind: OpKind, sources: Vec<PathBuf>, dest: Option<PathBuf> },
+    RunService(explorer_core::servicemenus::ServiceAction, Vec<PathBuf>),
+    Duplicate,
+    SaveMeta(PathBuf, explorer_core::meta::Meta),
+    ShowShortcuts,
+    ToggleColumn(String),
 }
 
 pub struct OpUi {
@@ -173,6 +188,15 @@ pub struct App {
     pub nav_reveal: bool,
     pub apps_cache: std::collections::HashMap<String, Vec<DesktopApp>>,
     pub templates: Vec<PathBuf>,
+    /// Right pane of split view (Dolphin F3).
+    pub second: Option<Tab>,
+    pub focus_second: bool,
+    pub terminal: Option<crate::term::Terminal>,
+    pub show_terminal: bool,
+    pub terminal_focused: bool,
+    pub service_actions: Option<Vec<explorer_core::servicemenus::ServiceAction>>,
+    pub volumes: Vec<explorer_core::devices::Volume>,
+    pub volumes_at: Instant,
 }
 
 impl App {
@@ -192,6 +216,12 @@ impl App {
             LaunchTo::Home => Location::Home,
             LaunchTo::ThisPc => Location::ThisPc,
         });
+        // Dolphin-style session restore (only when no location was requested).
+        let restored: Vec<Tab> = if startup.location.is_none() && settings.restore_session {
+            settings.session.iter().filter(|p| p.is_dir()).map(|p| Tab::new(Location::Path(p.clone()), &settings)).collect()
+        } else {
+            Vec::new()
+        };
         let mut tab = Tab::new(loc, &settings);
         if let Some(v) = startup.view {
             tab.view.mode = v;
@@ -209,7 +239,15 @@ impl App {
         let mut app = App {
             thumbs: Thumbs::new(ctx.clone()),
             settings,
-            tabs: vec![tab],
+            tabs: if restored.is_empty() { vec![tab] } else { restored },
+            second: None,
+            focus_second: false,
+            terminal: None,
+            show_terminal: false,
+            terminal_focused: false,
+            service_actions: None,
+            volumes: Vec::new(),
+            volumes_at: Instant::now() - Duration::from_secs(60),
             active: 0,
             clip: None,
             undo: UndoStack::default(),
@@ -244,18 +282,61 @@ impl App {
                 "group-type" => app.pending.push(Cmd::Group(GroupBy::Type)),
                 "confirm-delete" => app.pending.push(Cmd::Delete { permanent: true }),
                 "address" => app.pending.push(Cmd::FocusAddress),
+                "split" => app.pending.push(Cmd::ToggleSplit),
+                "terminal" => app.pending.push(Cmd::ToggleTerminal),
+                "filter" => app.pending.push(Cmd::ToggleFilterBar),
+                "dolphin" => {
+                    // Split + terminal + extra columns + an expanded folder in one shot.
+                    for c in ["tags", "rating", "permissions"] {
+                        if !app.settings.extra_columns.iter().any(|x| x == c) {
+                            app.settings.extra_columns.push(c.into());
+                        }
+                    }
+                    if let Some(d) = app.tab().visible.iter().find(|e| e.is_dir()).map(|e| e.path.clone()) {
+                        app.pending.push(Cmd::ToggleExpand(d));
+                    }
+                    app.pending.push(Cmd::ToggleSplit);
+                    app.pending.push(Cmd::ToggleTerminal);
+                }
+                "batch-rename" => {
+                    app.tab_mut().select_all();
+                    app.pending.push(Cmd::BatchRename);
+                }
+                "shortcuts" => app.pending.push(Cmd::ShowShortcuts),
                 other => eprintln!("unknown test action {other}"),
             }
         }
         app
     }
 
+    /// The tab commands act on: the focused split pane, else the active tab.
     pub fn tab(&self) -> &Tab {
-        &self.tabs[self.active]
+        match (&self.second, self.focus_second) {
+            (Some(t), true) => t,
+            _ => &self.tabs[self.active],
+        }
     }
 
     pub fn tab_mut(&mut self) -> &mut Tab {
-        &mut self.tabs[self.active]
+        match (&mut self.second, self.focus_second) {
+            (Some(t), true) => t,
+            _ => &mut self.tabs[self.active],
+        }
+    }
+
+    /// Unmounted drives and phones for This PC (refreshed every few seconds).
+    pub fn volumes(&mut self) -> Vec<explorer_core::devices::Volume> {
+        if self.volumes_at.elapsed() > Duration::from_secs(5) {
+            self.volumes_at = Instant::now();
+            let mut v = explorer_core::devices::unmounted_block_volumes();
+            v.extend(explorer_core::devices::phone_volumes());
+            self.volumes = v;
+        }
+        self.volumes.clone()
+    }
+
+    pub fn service_actions(&mut self) -> Vec<explorer_core::servicemenus::ServiceAction> {
+        self.service_actions.get_or_insert_with(explorer_core::servicemenus::load_all).clone()
     }
 
     pub fn cmd(&mut self, c: Cmd) {
@@ -444,6 +525,7 @@ impl App {
                 }
             }
             Cmd::Confirmed(a) => self.confirmed(ctx, a),
+            Cmd::StartRename if self.tab().selection.len() > 1 => self.run(ctx, Cmd::BatchRename),
             Cmd::StartRename => {
                 let t = self.tab_mut();
                 let target = t.focus.filter(|i| t.is_selected(*i)).or_else(|| t.selected_entries().first().and_then(|e| t.index_of(&e.path.clone())));
@@ -739,6 +821,118 @@ impl App {
                 self.focus_address = true;
             }
             Cmd::FocusSearch => self.focus_search = true,
+            Cmd::ToggleSplit => {
+                if self.second.take().is_some() {
+                    self.focus_second = false;
+                } else {
+                    let loc = self.tabs[self.active].loc.clone();
+                    self.second = Some(Tab::new(loc, &s));
+                    self.focus_second = true;
+                }
+            }
+            Cmd::FocusPane(second) => self.focus_second = second && self.second.is_some(),
+            Cmd::ToggleTerminal => {
+                self.show_terminal = !self.show_terminal;
+                if self.show_terminal && self.terminal.as_ref().is_none_or(|t| !t.alive()) {
+                    let dir = self.current_dir().unwrap_or_else(places::home_dir);
+                    match crate::term::Terminal::spawn(&dir, 12, 100) {
+                        Ok(t) => self.terminal = Some(t),
+                        Err(e) => {
+                            self.show_terminal = false;
+                            self.error("Terminal", e);
+                        }
+                    }
+                }
+            }
+            Cmd::ToggleFilterBar => {
+                let t = self.tab_mut();
+                t.name_filter = if t.name_filter.is_some() { None } else { Some(String::new()) };
+                t.rebuild(&s);
+            }
+            Cmd::ToggleExpand(p) => {
+                let t = self.tab_mut();
+                if !t.expanded.remove(&p) {
+                    t.expanded.insert(p);
+                }
+                t.rebuild(&s);
+            }
+            Cmd::ExpandFocused(open) => {
+                let t = self.tab_mut();
+                if let Some(i) = t.focus {
+                    let e = t.visible[i].clone();
+                    let depth = t.depth.get(i).copied().unwrap_or(0);
+                    if open && e.is_dir() && !t.expanded.contains(&e.path) {
+                        t.expanded.insert(e.path.clone());
+                        t.rebuild(&s);
+                    } else if !open && t.expanded.remove(&e.path) {
+                        t.rebuild(&s);
+                    } else if !open && depth > 0 {
+                        // Left on a child jumps to its parent row (Dolphin).
+                        if let Some(parent) = e.path.parent().map(Path::to_path_buf) {
+                            t.select_only_path(&parent);
+                        }
+                    }
+                }
+            }
+            Cmd::BatchRename => {
+                let paths = self.tab().selected_paths();
+                if paths.len() > 1 {
+                    self.dialogs.batch = Some(crate::dialogs::BatchRename::new(paths));
+                }
+            }
+            Cmd::MountVolume(v) => match explorer_core::devices::mount(&v) {
+                Ok(p) => {
+                    self.volumes_at = Instant::now() - Duration::from_secs(60);
+                    self.drives = places::drives();
+                    self.tab_mut().go(Location::Path(p), &s);
+                }
+                Err(e) => self.error(&format!("Mount {}", v.label), e),
+            },
+            Cmd::ConnectUri(uri, creds) => {
+                let c = creds.as_ref().map(|(u, d, p)| (u.as_str(), d.as_str(), p.as_str()));
+                match explorer_core::devices::mount_uri(&uri, c) {
+                    Ok(p) => self.tab_mut().go(Location::Path(p), &s),
+                    Err(e) if creds.is_none() && explorer_core::devices::needs_password(&e) => {
+                        self.dialogs.credentials = Some(crate::dialogs::Credentials { uri, ..Default::default() });
+                    }
+                    Err(e) => self.error("Connect to server", e),
+                }
+            }
+            Cmd::AdminRetry { kind, sources, dest } => {
+                match explorer_core::admin::run(kind, &sources, dest.as_deref()) {
+                    Ok(()) => self.notify("Done with administrator permission"),
+                    Err(e) => self.error("Administrator permission", e),
+                }
+                self.refresh_all();
+            }
+            Cmd::RunService(a, files) => {
+                if let Err(e) = explorer_core::servicemenus::run(&a, &files) {
+                    self.error(&a.name, e);
+                }
+            }
+            Cmd::Duplicate => {
+                let sel = self.tab().selected_paths();
+                if let Some(dir) = sel.first().and_then(|p| p.parent()).map(Path::to_path_buf) {
+                    // Copying into the same folder produces "name - Copy".
+                    self.start_op(OpRequest { kind: OpKind::Copy, sources: sel, dest: Some(dir) });
+                }
+            }
+            Cmd::SaveMeta(p, m) => match explorer_core::meta::write(&p, &m) {
+                Ok(()) => {
+                    self.notify("Saved tags and rating");
+                    self.tab_mut().meta_cache.borrow_mut().remove(&p);
+                }
+                Err(e) => self.error("Tags", e.to_string()),
+            },
+            Cmd::ShowShortcuts => self.dialogs.shortcuts = true,
+            Cmd::ToggleColumn(c) => {
+                if let Some(i) = self.settings.extra_columns.iter().position(|x| *x == c) {
+                    self.settings.extra_columns.remove(i);
+                } else {
+                    self.settings.extra_columns.push(c);
+                }
+                self.save_settings();
+            }
             Cmd::RevealInNav => {
                 // Ctrl+Shift+E: expand the navigation tree down to this folder.
                 if let Some(p) = self.current_dir() {
@@ -828,6 +1022,12 @@ impl App {
                 t.refresh(&s);
                 t.select_only_path(&to);
             }
+            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied && explorer_core::admin::available() => {
+                self.dialogs.admin = Some(crate::dialogs::AdminPrompt {
+                    message: format!("You'll need to provide administrator permission to rename '{}'.", path.display()),
+                    cmd: Cmd::AdminRetry { kind: OpKind::Move, sources: vec![path.to_path_buf()], dest: Some(to) },
+                });
+            }
             Err(e) => self.error("Rename", format!("Could not rename '{}': {e}", path.display())),
         }
     }
@@ -839,8 +1039,17 @@ impl App {
             self.tab_mut().go(Location::Path(p.to_path_buf()), &s);
             return;
         }
-        if archive::is_archive(p) && p.extension().is_some_and(|x| x == "zip") {
-            // Explorer opens zips in place; we offer extraction instead via the default app.
+        if archive::is_archive(p) {
+            // Open archives as folders, like Explorer's zip folders and Dolphin.
+            match archive::browse_dir(p) {
+                Ok(dir) => {
+                    let s = self.settings.clone();
+                    self.tab_mut().go(Location::Path(dir), &s);
+                    self.notify(format!("Showing the contents of {} (a read-only copy)", p.display()));
+                    return;
+                }
+                Err(e) => self.notify(format!("Could not open archive: {e}")),
+            }
         }
         let ext = e.extension();
         let scriptish = matches!(ext.as_deref(), None | Some("sh" | "appimage" | "run" | "bin" | "py"));
@@ -920,7 +1129,14 @@ impl App {
                 }
                 _ => {}
             }
-            if !r.errors.is_empty() {
+            let denied = r.errors.iter().any(|e| explorer_core::admin::is_permission_error(e));
+            if denied && !r.failed.is_empty() && explorer_core::admin::available() {
+                // Explorer: "You'll need to provide administrator permission".
+                self.dialogs.admin = Some(crate::dialogs::AdminPrompt {
+                    message: format!("You'll need to provide administrator permission to finish {} {} item(s).", op.handle.kind.verb().to_lowercase(), r.failed.len()),
+                    cmd: Cmd::AdminRetry { kind: op.handle.kind, sources: r.failed.clone(), dest: op.handle.dest.clone() },
+                });
+            } else if !r.errors.is_empty() {
                 let more = if r.errors.len() > 8 { format!("\n…and {} more", r.errors.len() - 8) } else { String::new() };
                 self.error("Some items could not be processed", r.errors.iter().take(8).cloned().collect::<Vec<_>>().join("\n") + &more);
             }
@@ -993,6 +1209,16 @@ impl App {
             }
         }
         self.poll_ops();
+        // Keep the embedded terminal in the current folder (Dolphin behaviour).
+        if let (Some(dir), true) = (self.current_dir(), self.show_terminal) {
+            if let Some(t) = self.terminal.as_mut() {
+                t.cd(&dir);
+            }
+        }
+        if let Some(t) = self.second.as_mut() {
+            t.poll_search(&s);
+            t.poll_changes(&s);
+        }
         // External file drops: copy into the current folder.
         let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).filter(|p| !p.as_os_str().is_empty()).collect());
         if !dropped.is_empty() {
@@ -1068,6 +1294,14 @@ impl eframe::App for App {
         if self.settings.show_preview_pane || self.settings.show_details_pane {
             crate::preview::side_pane(self, ui);
         }
+        if self.show_terminal {
+            crate::view::terminal_panel(self, ui);
+        } else {
+            self.terminal_focused = false;
+        }
+        if self.tab().name_filter.is_some() {
+            crate::view::filter_bar(self, ui);
+        }
         crate::view::central(self, ui);
         crate::menus::context_menu(self, &ctx);
         crate::dialogs::show_all(self, &ctx);
@@ -1079,6 +1313,7 @@ impl eframe::App for App {
             if let Some(r) = r {
                 self.settings.window_size = (r.width(), r.height());
             }
+            self.settings.session = self.tabs.iter().filter_map(|t| t.loc.path().map(Path::to_path_buf)).collect();
             self.save_settings();
         }
         self.maybe_screenshot(&ctx);

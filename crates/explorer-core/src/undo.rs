@@ -19,6 +19,8 @@ pub enum Action {
     Created(Vec<PathBuf>),
     /// Items moved to the bin at `when`.
     Trashed { paths: Vec<PathBuf>, when: SystemTime },
+    /// Several actions undone together (batch rename), newest last.
+    Batch(Vec<Action>),
 }
 
 impl Action {
@@ -28,6 +30,7 @@ impl Action {
             Action::Move(v) => format!("Undo Move ({})", v.len()),
             Action::Created(v) => format!("Undo New/Copy ({})", v.len()),
             Action::Trashed { paths, .. } => format!("Undo Delete ({})", paths.len()),
+            Action::Batch(v) => format!("Undo Rename ({})", v.len()),
         }
     }
 
@@ -70,6 +73,13 @@ impl Action {
             Action::Trashed { paths, when } => {
                 trashbin::restore_originals(&paths, when)?;
                 Ok(Action::Created(paths))
+            }
+            Action::Batch(actions) => {
+                let mut inverses = Vec::new();
+                for a in actions.into_iter().rev() {
+                    inverses.push(a.revert()?);
+                }
+                Ok(Action::Batch(inverses))
             }
         }
     }
