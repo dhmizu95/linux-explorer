@@ -233,12 +233,13 @@ fn button_impl(ui: &mut Ui, g: Option<Glyph>, text: &str, enabled: bool, selecte
     let galley = ui.painter().layout_no_wrap(text.to_string(), font, col);
     let icon_w = if g.is_some() { 24.0 } else { 0.0 };
     let chev_w = if dropdown { 16.0 } else { 0.0 };
-    let size = vec2(galley.size().x + icon_w + chev_w + 20.0, 32.0);
+    // Icon-only buttons match glyph_button's 36 px width.
+    let size = if text.is_empty() { vec2(36.0, 32.0) } else { vec2(galley.size().x + icon_w + chev_w + 20.0, 32.0) };
     let (rect, resp) = ui.allocate_exact_size(size, if enabled { Sense::click() } else { Sense::hover() });
     if enabled {
         paint_button_bg(ui, rect, &resp, selected, p);
     }
-    let mut x = rect.left() + 10.0;
+    let mut x = if text.is_empty() { rect.center().x - 7.5 } else { rect.left() + 10.0 };
     if let Some(g) = g {
         paint_glyph(ui.painter(), Rect::from_center_size(pos2(x + 7.5, rect.center().y), vec2(15.0, 15.0)), g, if selected { p.accent } else { col });
         x += icon_w;

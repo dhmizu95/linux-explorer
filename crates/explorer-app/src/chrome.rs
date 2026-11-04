@@ -700,8 +700,8 @@ pub fn command_bar(app: &mut App, ui: &mut Ui) {
                     }
                 } else {
                     let shown = |k: &str| !app.settings.toolbar_hidden.iter().any(|h| h == k);
-                    let (s_cut, s_copy, s_paste, s_rename, s_term, s_del) =
-                        (shown("cut"), shown("copy"), shown("paste"), shown("rename"), shown("terminal"), shown("delete"));
+                    let (s_cut, s_copy, s_paste, s_rename, s_term, s_del, s_split) =
+                        (shown("cut"), shown("copy"), shown("paste"), shown("rename"), shown("terminal"), shown("delete"), shown("split"));
                     new_menu(app, ui, in_folder);
                     separator(ui, &p);
                     if s_cut && widgets::glyph_button(ui, Glyph::Cut, has_sel && in_folder_or_search(&loc), &p).on_hover_text("Cut (Ctrl+X)").clicked() {
@@ -724,6 +724,12 @@ pub fn command_bar(app: &mut App, ui: &mut Ui) {
                     if s_del && widgets::glyph_button(ui, Glyph::Delete, has_sel && in_folder_or_search(&loc), &p).on_hover_text("Delete (Del)").clicked() {
                         app.cmd(Cmd::Delete { permanent: false });
                     }
+                    if s_split {
+                        let r = widgets::toggle_text_button(ui, Some(Glyph::Split), "", app.second.is_some(), &p);
+                        if r.on_hover_text("Split view (Ctrl+Shift+S)").clicked() {
+                            app.cmd(Cmd::ToggleSplit);
+                        }
+                    }
                     separator(ui, &p);
                 }
                 sort_menu(app, ui);
@@ -734,7 +740,7 @@ pub fn command_bar(app: &mut App, ui: &mut Ui) {
                 more_menu(app, ui);
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     let shown = |k: &str| !app.settings.toolbar_hidden.iter().any(|h| h == k);
-                    let (s_details, s_preview, s_split, s_tp) = (shown("details"), shown("preview"), shown("split"), shown("termpanel"));
+                    let (s_details, s_preview) = (shown("details"), shown("preview"));
                     if s_details {
                         let on = app.settings.show_details_pane;
                         let r = widgets::toggle_text_button(ui, Some(Glyph::DetailsPane), "Details", on, &p).on_hover_text("Show the details pane (Alt+Shift+P)");
@@ -747,18 +753,6 @@ pub fn command_bar(app: &mut App, ui: &mut Ui) {
                         let r = widgets::toggle_text_button(ui, Some(Glyph::PreviewPane), "Preview", on, &p).on_hover_text("Show the preview pane (Alt+P)");
                         if r.clicked() {
                             app.cmd(Cmd::TogglePreview);
-                        }
-                    }
-                    if s_tp {
-                        let on = app.show_terminal;
-                        if widgets::toggle_text_button(ui, Some(Glyph::Terminal), "Terminal", on, &p).on_hover_text("Terminal panel (Ctrl+`)").clicked() {
-                            app.cmd(Cmd::ToggleTerminal);
-                        }
-                    }
-                    if s_split {
-                        let on = app.second.is_some();
-                        if widgets::toggle_text_button(ui, Some(Glyph::Split), "Split", on, &p).on_hover_text("Split view (Ctrl+Shift+S)").clicked() {
-                            app.cmd(Cmd::ToggleSplit);
                         }
                     }
                 });

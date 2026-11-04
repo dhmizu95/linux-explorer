@@ -220,7 +220,6 @@ pub const TOOLBAR_ITEMS: &[(&str, &str)] = &[
     ("delete", "Delete"),
     ("filter", "Filter"),
     ("split", "Split view"),
-    ("termpanel", "Terminal panel"),
     ("preview", "Preview"),
     ("details", "Details"),
 ];
