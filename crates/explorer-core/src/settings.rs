@@ -157,7 +157,7 @@ impl Default for Settings {
             default_view: FolderView::default(),
             folder_views: HashMap::new(),
             column_widths: [300.0, 160.0, 140.0, 90.0],
-            window_size: (1200.0, 760.0),
+            window_size: (1210.0, 667.0),
             open_folders_in_new_window: false,
             restore_session: false,
             session: Vec::new(),

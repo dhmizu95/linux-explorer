@@ -1,7 +1,8 @@
 //! Right-click menus in the Windows 11 layout: an icon row for the common
 //! clipboard actions, then the command list.
 
-use eframe::egui::{self, vec2, Frame, Id, Margin, Order, Ui};
+use eframe::egui::containers::menu::{MenuConfig, SubMenuButton};
+use eframe::egui::{self, pos2, vec2, CornerRadius, Frame, Id, IdSalt, Margin, Order, Rect, Ui};
 use explorer_core::archive;
 use explorer_core::grouping::GroupBy;
 use explorer_core::location::Location;
@@ -11,20 +12,83 @@ use explorer_core::sorting::SortKey;
 use crate::app::{App, Cmd, CtxTarget};
 use crate::widgets::{self, Glyph};
 
-fn item(ui: &mut Ui, label: &str, shortcut: &str) -> bool {
-    let mut b = egui::Button::new(label).frame_when_inactive(false).min_size(vec2(250.0, 30.0));
-    if !shortcut.is_empty() {
-        b = b.shortcut_text(shortcut);
+/// Shared look for the context menu and its submenus: roomier rows,
+/// rounded hover, and a 16 px icon gutter so labels line up.
+fn menu_look(style: &mut egui::Style) {
+    egui::containers::menu::menu_style(style);
+    style.spacing.button_padding = vec2(10.0, 0.0);
+    style.spacing.interact_size.y = 32.0;
+    style.spacing.item_spacing = vec2(10.0, 1.0);
+    let w = &mut style.visuals.widgets;
+    for v in [&mut w.hovered, &mut w.active, &mut w.open] {
+        v.corner_radius = CornerRadius::same(5);
     }
-    ui.add(b).clicked()
+}
+
+fn menu_config() -> MenuConfig {
+    MenuConfig::new().style(menu_look)
+}
+
+/// A menu row: optional glyph in the gutter, label, shortcut on the right.
+fn row(ui: &mut Ui, glyph: Option<Glyph>, enabled: bool, label: &str, right: &str) -> bool {
+    let mut b = egui::Button::new((egui::Atom::custom(IdSalt::new("ico"), vec2(16.0, 16.0)), label))
+        .frame_when_inactive(false)
+        .min_size(vec2(250.0, 32.0));
+    if !right.is_empty() {
+        b = b.shortcut_text(right);
+    }
+    let r = ui.add_enabled_ui(enabled, |ui| b.atom_ui(ui)).inner;
+    paint_gutter(ui, &r, glyph);
+    r.response.clicked()
+}
+
+fn paint_gutter(ui: &Ui, r: &egui::WidgetAtomResponse, glyph: Option<Glyph>) {
+    let (Some(g), Some((_, rect))) = (glyph, r.custom_rects().next()) else { return };
+    let col = if r.response.enabled() { ui.visuals().text_color() } else { ui.visuals().weak_text_color() };
+    widgets::paint_glyph(ui.painter(), rect.shrink(1.5), g, col);
+}
+
+/// A submenu row matching `row`, with the arrow on the right.
+fn sub<R>(ui: &mut Ui, glyph: Option<Glyph>, label: &str, add: impl FnOnce(&mut Ui) -> R) {
+    let b = egui::Button::new((egui::Atom::custom(IdSalt::new("ico"), vec2(16.0, 16.0)), label))
+        .frame_when_inactive(false)
+        .right_text(SubMenuButton::arrow_atom(None))
+        .min_size(vec2(250.0, 32.0));
+    let (resp, _) = SubMenuButton::from_button(b).config(menu_config()).ui(ui, add);
+    // ponytail: SubMenuButton hides the atom rects, so the gutter is placed by padding (10) + half icon (8).
+    if let Some(g) = glyph {
+        let rect = Rect::from_center_size(pos2(resp.rect.left() + 18.0, resp.rect.center().y), vec2(13.0, 13.0));
+        widgets::paint_glyph(ui.painter(), rect, g, ui.visuals().text_color());
+    }
+}
+
+fn item(ui: &mut Ui, label: &str, shortcut: &str) -> bool {
+    row(ui, None, true, label, shortcut)
 }
 
 fn item_enabled(ui: &mut Ui, enabled: bool, label: &str, shortcut: &str) -> bool {
-    let mut b = egui::Button::new(label).frame_when_inactive(false).min_size(vec2(250.0, 30.0));
-    if !shortcut.is_empty() {
-        b = b.shortcut_text(shortcut);
-    }
-    ui.add_enabled(enabled, b).clicked()
+    row(ui, None, enabled, label, shortcut)
+}
+
+/// "Open with" submenu for `path` (file or folder).
+fn open_with(app: &mut App, ui: &mut Ui, path: &std::path::Path, cmds: &mut Vec<Cmd>) {
+    let mime = explorer_core::filetype::mime_type(path, path.is_dir());
+    let apps = app.apps_for(&mime);
+    sub(ui, None, "Open with", |ui| {
+        ui.set_min_width(240.0);
+        for a in apps.iter().take(12) {
+            let icon = crate::thumbs::app_icon(&mut app.thumbs, ui.ctx(), a.icon.as_deref(), 16.0);
+            if ui.button((icon, a.name.as_str())).clicked() {
+                cmds.push(Cmd::OpenWith(path.to_path_buf(), a.clone()));
+            }
+        }
+        if !apps.is_empty() {
+            ui.separator();
+        }
+        if ui.button("Choose another app").clicked() {
+            cmds.push(Cmd::OpenWithDialog(path.to_path_buf()));
+        }
+    });
 }
 
 pub fn context_menu(app: &mut App, ctx: &egui::Context) {
@@ -39,10 +103,9 @@ pub fn context_menu(app: &mut App, ctx: &egui::Context) {
         .fixed_pos(pos)
         .constrain(true)
         .show(ctx, |ui| {
-            Frame::menu(ui.style()).inner_margin(Margin::same(4)).show(ui, |ui| {
-                egui::containers::menu::menu_style(ui.style_mut());
+            Frame::menu(ui.style()).inner_margin(Margin::same(6)).show(ui, |ui| {
+                menu_look(ui.style_mut());
                 ui.set_min_width(260.0);
-                ui.spacing_mut().item_spacing.y = 0.0;
                 match &target {
                     CtxTarget::Items => items_menu(app, ui, &mut cmds),
                     CtxTarget::Background => background_menu(app, ui, &mut cmds),
@@ -174,23 +237,7 @@ fn items_menu(app: &mut App, ui: &mut Ui, cmds: &mut Vec<Cmd>) {
                 cmds.push(Cmd::OpenTerminal(e.path.clone()));
             }
         } else {
-            let mime = explorer_core::filetype::mime_type(&e.path, false);
-            let apps = app.apps_for(&mime);
-            ui.menu_button(egui::RichText::new("Open with"), |ui| {
-                ui.set_min_width(240.0);
-                for a in apps.iter().take(12) {
-                    let icon = crate::thumbs::app_icon(&mut app.thumbs, ui.ctx(), a.icon.as_deref(), 16.0);
-                    if ui.button((icon, a.name.as_str())).clicked() {
-                        cmds.push(Cmd::OpenWith(e.path.clone(), a.clone()));
-                    }
-                }
-                if !apps.is_empty() {
-                    ui.separator();
-                }
-                if ui.button("Choose another app").clicked() {
-                    cmds.push(Cmd::OpenWithDialog(e.path.clone()));
-                }
-            });
+            open_with(app, ui, &e.path, cmds);
             if archive::is_archive(&e.path) && item(ui, "Extract All…", "") {
                 cmds.push(Cmd::Extract(e.path.clone()));
             }
@@ -226,7 +273,7 @@ fn items_menu(app: &mut App, ui: &mut Ui, cmds: &mut Vec<Cmd>) {
     let files: Vec<std::path::PathBuf> = sel.iter().map(|e| e.path.clone()).collect();
     let actions = explorer_core::servicemenus::applicable(&app.service_actions(), &files);
     if !actions.is_empty() {
-        ui.menu_button("More actions", |ui| {
+        sub(ui, Some(Glyph::More), "More actions", |ui| {
             ui.set_min_width(220.0);
             let mut groups: Vec<String> = actions.iter().filter_map(|a| a.submenu.clone()).collect();
             groups.dedup();
@@ -256,7 +303,7 @@ fn items_menu(app: &mut App, ui: &mut Ui, cmds: &mut Vec<Cmd>) {
         }
     }
     ui.separator();
-    if item(ui, "Properties", "Alt+Enter") {
+    if row(ui, Some(Glyph::DetailsPane), true, "Properties", "Alt+Enter") {
         cmds.push(Cmd::Properties);
     }
 }
@@ -273,7 +320,7 @@ fn background_menu(app: &mut App, ui: &mut Ui, cmds: &mut Vec<Cmd>) {
         }
         ui.separator();
     }
-    ui.menu_button("View", |ui| {
+    sub(ui, Some(Glyph::View), "View", |ui| {
         ui.set_min_width(220.0);
         for (i, m) in ViewMode::ALL.iter().enumerate() {
             let label = format!("{}{}", if view.mode == *m { "●  " } else { "     " }, m.label());
@@ -286,7 +333,7 @@ fn background_menu(app: &mut App, ui: &mut Ui, cmds: &mut Vec<Cmd>) {
             cmds.push(Cmd::ToggleCompact);
         }
     });
-    ui.menu_button("Sort by", |ui| {
+    sub(ui, Some(Glyph::Sort), "Sort by", |ui| {
         ui.set_min_width(200.0);
         for k in [SortKey::Name, SortKey::Modified, SortKey::Type, SortKey::Size, SortKey::Created] {
             let label = format!("{}{}", if view.sort.key == k { "●  " } else { "     " }, k.label());
@@ -302,7 +349,7 @@ fn background_menu(app: &mut App, ui: &mut Ui, cmds: &mut Vec<Cmd>) {
             cmds.push(Cmd::SortDir(false));
         }
     });
-    ui.menu_button("Group by", |ui| {
+    sub(ui, Some(Glyph::ViewDetails), "Group by", |ui| {
         ui.set_min_width(200.0);
         for g in GroupBy::ALL {
             let label = format!("{}{}", if view.group == g { "●  " } else { "     " }, g.label());
@@ -311,25 +358,25 @@ fn background_menu(app: &mut App, ui: &mut Ui, cmds: &mut Vec<Cmd>) {
             }
         }
     });
-    if item(ui, "Refresh", "F5") {
+    if row(ui, Some(Glyph::Refresh), true, "Refresh", "F5") {
         cmds.push(Cmd::Refresh);
     }
     ui.separator();
     if in_folder {
         let can_paste = app.clip.is_some();
-        if item_enabled(ui, can_paste, "Paste", "Ctrl+V") {
+        if row(ui, Some(Glyph::Paste), can_paste, "Paste", "Ctrl+V") {
             cmds.push(Cmd::Paste(None));
         }
     }
     if app.undo.can_undo() {
         let label = app.undo.peek_undo().map(|a| a.describe()).unwrap_or_default();
-        if item(ui, &label, "Ctrl+Z") {
+        if row(ui, Some(Glyph::Undo), true, &label, "Ctrl+Z") {
             cmds.push(Cmd::Undo);
         }
     }
     if in_folder {
         ui.separator();
-        ui.menu_button("New", |ui| {
+        sub(ui, Some(Glyph::Plus), "New", |ui| {
             ui.set_min_width(220.0);
             if ui.add(egui::Button::new("Folder").shortcut_text("Ctrl+Shift+N")).clicked() {
                 cmds.push(Cmd::NewFolder);
@@ -349,12 +396,13 @@ fn background_menu(app: &mut App, ui: &mut Ui, cmds: &mut Vec<Cmd>) {
             }
         });
         if let Some(d) = app.current_dir() {
-            if item(ui, "Open in Terminal", "") {
+            open_with(app, ui, &d, cmds);
+            if row(ui, Some(Glyph::Terminal), true, "Open in Terminal", "") {
                 cmds.push(Cmd::OpenTerminal(d));
             }
         }
         ui.separator();
-        if item(ui, "Properties", "Alt+Enter") {
+        if row(ui, Some(Glyph::DetailsPane), true, "Properties", "Alt+Enter") {
             cmds.push(Cmd::PropertiesOf(app.current_dir().into_iter().collect()));
         }
     }
