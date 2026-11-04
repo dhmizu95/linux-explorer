@@ -230,6 +230,13 @@ pub fn options_extra(ui: &mut Ui, draft: &mut Settings) {
     ui.checkbox(&mut draft.git_overlays, "Show Git status on files");
     ui.checkbox(&mut draft.show_free_space, "Show free space in the status bar");
     ui.checkbox(&mut draft.restore_session, "Restore previous tabs at startup");
+    ui.horizontal(|ui| {
+        ui.label("Window size:");
+        let (w, h) = &mut draft.window_size;
+        ui.add(egui::DragValue::new(w).range(640.0..=7680.0).speed(1.0).max_decimals(0).suffix(" px"));
+        ui.label("×");
+        ui.add(egui::DragValue::new(h).range(400.0..=4320.0).speed(1.0).max_decimals(0).suffix(" px"));
+    });
     ui.collapsing("Command bar buttons", |ui| {
         for (key, label) in TOOLBAR_ITEMS {
             let mut on = !draft.toolbar_hidden.iter().any(|h| h == key);

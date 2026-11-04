@@ -1182,6 +1182,10 @@ impl App {
     pub fn apply_settings(&mut self, ctx: &egui::Context, new: Settings) {
         let theme_changed = new.theme != self.settings.theme;
         let hidden_changed = new.show_hidden != self.settings.show_hidden;
+        if new.window_size != self.settings.window_size {
+            let (w, h) = new.window_size;
+            ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::InnerSize(egui::vec2(w, h)));
+        }
         self.settings = new;
         if theme_changed {
             self.palette = palette_for(self.settings.theme);
@@ -1317,13 +1321,14 @@ impl eframe::App for App {
         crate::chrome::resize_handles(self, &ctx);
 
         self.run_pending(&ctx);
+        // Track the live size so Folder Options shows it and close saves it.
+        // content_rect, not viewport().inner_rect: Wayland never reports the latter.
+        let maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false) || i.viewport().fullscreen.unwrap_or(false));
+        if !maximized {
+            let r = ctx.content_rect();
+            self.settings.window_size = (r.width(), r.height());
+        }
         if ctx.input(|i| i.viewport().close_requested()) {
-            // content_rect, not viewport().inner_rect: Wayland never reports the latter.
-            let maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false) || i.viewport().fullscreen.unwrap_or(false));
-            if !maximized {
-                let r = ctx.content_rect();
-                self.settings.window_size = (r.width(), r.height());
-            }
             self.settings.session = self.tabs.iter().filter_map(|t| t.loc.path().map(Path::to_path_buf)).collect();
             self.save_settings();
         }
