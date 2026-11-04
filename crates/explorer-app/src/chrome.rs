@@ -57,6 +57,7 @@ pub fn title_bar(app: &mut App, ui: &mut Ui) {
     egui::Panel::top("titlebar")
         .exact_size(TAB_STRIP_H)
         .resizable(false)
+        .show_separator_line(false)
         .frame(Frame::new().fill(p.titlebar).corner_radius(corners(app, ui.ctx(), Part::Title)))
         .show(ui, |ui| {
             let full = ui.max_rect();
