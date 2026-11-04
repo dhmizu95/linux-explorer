@@ -62,7 +62,7 @@ pub fn title_bar(app: &mut App, ui: &mut Ui) {
         .show(ui, |ui| {
             let full = ui.max_rect();
             let custom = app.startup.custom_titlebar;
-            let caption_w = if custom { 46.0 * 3.0 } else { 0.0 };
+            let caption_w = if custom { CAPTION_STEP * 3.0 + CAPTION_PAD } else { 0.0 };
             // Drag area behind everything.
             let drag = ui.interact(full, ui.scope_id().with("drag"), Sense::click_and_drag());
             if custom {
@@ -146,23 +146,24 @@ pub fn title_bar(app: &mut App, ui: &mut Ui) {
         });
 }
 
+/// Breeze-style (KDE) window buttons: bare glyphs, filled circle on hover.
 fn caption_buttons(ui: &mut Ui, full: Rect, p: &crate::theme::Palette) {
     let ctx = ui.ctx().clone();
     let max = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
-    let w = 46.0;
-    let h = 32.0;
     let glyphs = [Glyph::Minimize, if max { Glyph::Restore } else { Glyph::Maximize }, Glyph::Close];
     for (k, g) in glyphs.iter().enumerate() {
-        let r = Rect::from_min_size(pos2(full.right() - w * (3 - k) as f32, full.top()), vec2(w, h));
+        let c = pos2(full.right() - CAPTION_PAD - CAPTION_STEP * (2 - k) as f32 - CAPTION_D / 2.0, full.center().y);
+        let r = Rect::from_center_size(c, vec2(CAPTION_D, CAPTION_D));
         let resp = ui.interact(r, ui.scope_id().with(("cap", k)), Sense::click());
         let close = k == 2;
-        let (bg, fg) = if resp.hovered() {
-            if close { (Color32::from_rgb(0xC4, 0x2B, 0x1C), Color32::WHITE) } else { (p.hover, p.text) }
+        let fg = if resp.hovered() {
+            let bg = if close { Color32::from_rgb(0xDA, 0x44, 0x53) } else { p.text };
+            ui.painter().circle_filled(c, CAPTION_D / 2.0, bg);
+            if close { Color32::WHITE } else { p.toolbar }
         } else {
-            (Color32::TRANSPARENT, p.text)
+            p.text
         };
-        ui.painter().rect_filled(r, CornerRadius::ZERO, bg);
-        widgets::paint_glyph(ui.painter(), Rect::from_center_size(r.center(), vec2(10.0, 10.0)), *g, fg);
+        widgets::paint_glyph(ui.painter(), Rect::from_center_size(c, vec2(9.0, 9.0)), *g, fg);
         if resp.clicked() {
             match k {
                 0 => ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true)),
@@ -172,6 +173,10 @@ fn caption_buttons(ui: &mut Ui, full: Rect, p: &crate::theme::Palette) {
         }
     }
 }
+
+const CAPTION_D: f32 = 20.0;
+const CAPTION_STEP: f32 = 28.0;
+const CAPTION_PAD: f32 = 10.0;
 
 /// Window corner radius, as in Windows 11.
 const WINDOW_RADIUS: u8 = 8;
