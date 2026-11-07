@@ -229,6 +229,7 @@ pub fn options_extra(ui: &mut Ui, draft: &mut Settings) {
     ui.checkbox(&mut draft.expandable_folders, "Expandable folders in Details view");
     ui.checkbox(&mut draft.git_overlays, "Show Git status on files");
     ui.checkbox(&mut draft.show_free_space, "Show free space in the status bar");
+    ui.checkbox(&mut draft.ctx_icons_top, "Cut/Copy/Rename/Delete icons at the top of the right-click menu");
     ui.checkbox(&mut draft.restore_session, "Restore previous tabs at startup");
     ui.horizontal(|ui| {
         ui.label("Window size:");

@@ -151,6 +151,8 @@ pub struct Settings {
     pub folder_color: [u8; 3],
     /// Folder icon size in the medium/large/extra large views (1.0 = normal).
     pub folder_scale: f32,
+    /// Cut/Copy/Rename/Delete icon row at the top of the item context menu (else below Open).
+    pub ctx_icons_top: bool,
 }
 
 impl Default for Settings {
@@ -187,6 +189,7 @@ impl Default for Settings {
             show_free_space: true,
             folder_color: FOLDER_PRESETS[0].1,
             folder_scale: 1.0,
+            ctx_icons_top: true,
         }
     }
 }

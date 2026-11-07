@@ -210,6 +210,16 @@ fn items_menu(app: &mut App, ui: &mut Ui, cmds: &mut Vec<Cmd>) {
     }
     let in_folder = matches!(app.tab().loc, Location::Path(_));
     let single = (sel.len() == 1).then(|| sel[0].clone());
+    let icons_top = app.settings.ctx_icons_top;
+    let row_items = [
+        (Glyph::Cut, "Cut (Ctrl+X)", true, Cmd::Cut),
+        (Glyph::Copy, "Copy (Ctrl+C)", true, Cmd::Copy),
+        (Glyph::Rename, "Rename (F2)", in_folder && sel.len() == 1, Cmd::StartRename),
+        (Glyph::Delete, "Delete (Del)", true, Cmd::Delete { permanent: false }),
+    ];
+    if icons_top {
+        icon_row(app, ui, &row_items, cmds);
+    }
     if item(ui, "Open", "Enter") {
         cmds.push(Cmd::OpenSelection);
     }
@@ -218,17 +228,9 @@ fn items_menu(app: &mut App, ui: &mut Ui, cmds: &mut Vec<Cmd>) {
     }
     ui.add_space(2.0);
     ui.separator();
-    icon_row(
-        app,
-        ui,
-        &[
-            (Glyph::Cut, "Cut (Ctrl+X)", true, Cmd::Cut),
-            (Glyph::Copy, "Copy (Ctrl+C)", true, Cmd::Copy),
-            (Glyph::Rename, "Rename (F2)", in_folder && sel.len() == 1, Cmd::StartRename),
-            (Glyph::Delete, "Delete (Del)", true, Cmd::Delete { permanent: false }),
-        ],
-        cmds,
-    );
+    if !icons_top {
+        icon_row(app, ui, &row_items, cmds);
+    }
     if let Some(e) = &single {
         if e.is_dir() {
             if item(ui, "Open in new tab", "") {
