@@ -157,10 +157,13 @@ pub fn context_menu(app: &mut App, ctx: &egui::Context) {
         close = true;
     }
     let escape = ctx.input(|i| i.key_pressed(egui::Key::Escape));
-    let pressed_outside =
-        ctx.input(|i| i.pointer.any_pressed() && i.pointer.interact_pos().is_some_and(|pp| !area.response.rect.contains(pp)));
-    // Ignore the click that opened the menu; a press inside an open submenu is not "outside".
-    if escape || (app.frame > opened + 1 && pressed_outside && !egui::Popup::is_any_open(ctx)) {
+    // Submenus are Foreground popups that egui tracks in MenuState, not popup memory,
+    // so `Popup::is_any_open` misses them; check the layer under the press instead.
+    let pressed_outside = ctx.input(|i| i.pointer.any_pressed()).then(|| ctx.input(|i| i.pointer.interact_pos())).flatten().is_some_and(|pp| {
+        !area.response.rect.contains(pp) && ctx.layer_id_at(pp).is_none_or(|l| l.order != Order::Foreground)
+    });
+    // Ignore the click that opened the menu.
+    if escape || (app.frame > opened + 1 && pressed_outside) {
         close = true;
     }
     if close {

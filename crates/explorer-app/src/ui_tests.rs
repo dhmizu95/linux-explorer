@@ -382,3 +382,25 @@ fn dolphin_features() {
     let loc = h.state().tab().loc.clone();
     assert!(matches!(&loc, Location::Path(p) if p.join("photos/IMG_001.jpg").exists()), "archive view: {loc:?}");
 }
+
+#[test]
+fn context_submenu_item_click_runs_command() {
+    use crate::app::{Cmd, CtxTarget};
+    let root = tempfile::tempdir().unwrap();
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(1280.0, 800.0))
+        .build_eframe(|cc| App::new(cc, startup(Location::Path(root.path().to_path_buf()))));
+    h.run_steps(2);
+    assert!(h.state().tab().view.sort.ascending);
+    h.state_mut().cmd(Cmd::ContextMenu(egui::pos2(500.0, 300.0), CtxTarget::Background));
+    h.run_steps(3);
+    h.get_by_label("Sort by").hover();
+    h.run_steps(3);
+    let n = h.get_by_label_contains("Descending");
+    n.hover();
+    h.run_steps(1);
+    h.get_by_label_contains("Descending").click();
+    h.run_steps(3);
+    assert!(!h.state().tab().view.sort.ascending, "submenu click should sort descending");
+    assert!(h.state().ctx_menu.is_none());
+}
