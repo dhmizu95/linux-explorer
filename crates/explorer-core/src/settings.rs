@@ -96,6 +96,20 @@ impl Default for FolderView {
     }
 }
 
+/// Named folder colours offered in Options (first is the default).
+pub const FOLDER_PRESETS: &[(&str, [u8; 3])] = &[
+    ("Blue", [0x52, 0x94, 0xE2]),
+    ("Teal", [0x2A, 0xA6, 0xA6]),
+    ("Green", [0x4C, 0xAF, 0x50]),
+    ("Yellow", [0xE8, 0xB7, 0x2A]),
+    ("Orange", [0xF0, 0x8A, 0x2C]),
+    ("Red", [0xE0, 0x4F, 0x4F]),
+    ("Pink", [0xE5, 0x6B, 0xA8]),
+    ("Purple", [0x8E, 0x5F, 0xD0]),
+    ("Brown", [0x9A, 0x6B, 0x4A]),
+    ("Grey", [0x8A, 0x93, 0x9E]),
+];
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -133,6 +147,10 @@ pub struct Settings {
     /// Expandable folders in Details view.
     pub expandable_folders: bool,
     pub show_free_space: bool,
+    /// Folder icon colour (RGB).
+    pub folder_color: [u8; 3],
+    /// Folder icon size in the medium/large/extra large views (1.0 = normal).
+    pub folder_scale: f32,
 }
 
 impl Default for Settings {
@@ -167,6 +185,8 @@ impl Default for Settings {
             git_overlays: true,
             expandable_folders: true,
             show_free_space: true,
+            folder_color: FOLDER_PRESETS[0].1,
+            folder_scale: 1.0,
         }
     }
 }

@@ -237,6 +237,26 @@ pub fn options_extra(ui: &mut Ui, draft: &mut Settings) {
         ui.label("×");
         ui.add(egui::DragValue::new(h).range(400.0..=4320.0).speed(1.0).max_decimals(0).suffix(" px"));
     });
+    ui.horizontal_wrapped(|ui| {
+        ui.label("Folder color:");
+        for (name, rgb) in explorer_core::settings::FOLDER_PRESETS {
+            let col = Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
+            let sel = draft.folder_color == *rgb;
+            let stroke = if sel { egui::Stroke::new(2.0, ui.visuals().strong_text_color()) } else { egui::Stroke::NONE };
+            let b = egui::Button::new("").fill(col).stroke(stroke).min_size(vec2(22.0, 22.0));
+            if ui.add(b).on_hover_text(*name).clicked() {
+                draft.folder_color = *rgb;
+            }
+        }
+        ui.color_edit_button_srgb(&mut draft.folder_color).on_hover_text("Custom color");
+    });
+    ui.horizontal(|ui| {
+        ui.label("Folder size (medium and larger icons):");
+        ui.add(egui::Slider::new(&mut draft.folder_scale, 0.5..=1.25).custom_formatter(|v, _| format!("{:.0}%", v * 100.0)));
+        if ui.small_button("Reset").clicked() {
+            draft.folder_scale = 1.0;
+        }
+    });
     ui.collapsing("Command bar buttons", |ui| {
         for (key, label) in TOOLBAR_ITEMS {
             let mut on = !draft.toolbar_hidden.iter().any(|h| h == key);

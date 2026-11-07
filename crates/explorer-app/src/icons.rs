@@ -3,6 +3,7 @@
 
 use eframe::egui::{self, pos2, vec2, Color32, CornerRadius, Painter, Pos2, Rect, Shape, Stroke, StrokeKind};
 use explorer_core::filetype::Category;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Icon {
@@ -19,6 +20,25 @@ pub enum Icon {
     Pictures,
     Music,
     Videos,
+}
+
+static FOLDER_RGB: AtomicU32 = AtomicU32::new(0x5294E2);
+
+/// Colour used for every folder icon (set from Settings each frame).
+pub fn set_folder_color(rgb: [u8; 3]) {
+    FOLDER_RGB.store(u32::from_be_bytes([0, rgb[0], rgb[1], rgb[2]]), Ordering::Relaxed);
+}
+
+fn folder_base() -> Color32 {
+    c(FOLDER_RGB.load(Ordering::Relaxed))
+}
+
+/// Blend towards white (t>0) or black (t<0).
+fn shade(col: Color32, t: f32) -> Color32 {
+    let target = if t >= 0.0 { 255.0 } else { 0.0 };
+    let t = t.abs();
+    let f = |v: u8| (v as f32 + (target - v as f32) * t).round() as u8;
+    Color32::from_rgb(f(col.r()), f(col.g()), f(col.b()))
 }
 
 fn c(hex: u32) -> Color32 {
@@ -57,10 +77,9 @@ enum Badge {
 
 fn folder(p: &Painter, r: Rect, badge: Option<Badge>) {
     let s = r.width();
-    // Mint-Y Blue (Nemo / Linux Mint) folder colours.
-    let back = c(0x5883B8);
-    let front_top = c(0x7AAEEB);
-    let front = c(0x5294E2);
+    let front = folder_base();
+    let back = shade(front, -0.12);
+    let front_top = shade(front, 0.25);
     let rad = (s * 0.06).max(1.0) as u8;
     // Back panel with tab.
     let top = r.top() + s * 0.16;
@@ -80,15 +99,13 @@ fn folder(p: &Painter, r: Rect, badge: Option<Badge>) {
     p.rect_filled(hl, CornerRadius { nw: rad, ne: rad, sw: 0, se: 0 }, front_top);
     if let Some(b) = badge {
         let br = Rect::from_center_size(front_r.center() + vec2(0.0, s * 0.02), vec2(s * 0.34, s * 0.34));
-        badge_glyph(p, br, b);
+        badge_glyph(p, br, b, shade(front, -0.6));
     }
 }
 
-fn badge_glyph(p: &Painter, r: Rect, b: Badge) {
+fn badge_glyph(p: &Painter, r: Rect, b: Badge, ink: Color32) {
     let s = r.width();
     let w = (s * 0.12).max(1.2);
-    // One dark-blue ink on the blue folder, Mint-Y style.
-    let ink = c(0x234E80);
     match b {
         Badge::Desktop => {
             let scr = Rect::from_min_max(r.min + vec2(0.0, s * 0.05), pos2(r.right(), r.top() + s * 0.7));
@@ -213,10 +230,10 @@ fn file(p: &Painter, r: Rect, cat: Category, dark: bool) {
             ));
             p.circle_filled(pos2(fr.right() - fr.width() * 0.22, fr.top() + fr.height() * 0.25), fr.width() * 0.12, c(0xFFD54A));
         }
-        Category::Audio => badge_glyph(p, inner.shrink(inner.width() * 0.1), Badge::Note),
+        Category::Audio => badge_glyph(p, inner.shrink(inner.width() * 0.1), Badge::Note, c(0x234E80)),
         Category::Video => {
             p.rect_filled(inner, CornerRadius::same(1), c(0x3A3A48));
-            badge_glyph(p, inner.shrink(inner.width() * 0.28), Badge::Play);
+            badge_glyph(p, inner.shrink(inner.width() * 0.28), Badge::Play, c(0x234E80));
         }
         Category::Archive => {
             let x = page.center().x;

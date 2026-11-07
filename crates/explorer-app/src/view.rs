@@ -750,6 +750,8 @@ fn paint_icon(app: &mut App, ui: &Ui, r: Rect, e: &Entry, dim: bool) {
         }
     }
     if !drew {
+        // Folder size slider applies to the big icon views only.
+        let r = if e.is_dir() && size >= 40.0 { Rect::from_center_size(r.center(), r.size() * app.settings.folder_scale.clamp(0.5, 1.25)) } else { r };
         icons::draw(ui.painter(), r, icon_for(e), app.palette.dark);
         if dim {
             ui.painter().rect_filled(r, CornerRadius::ZERO, app.palette.content.gamma_multiply(0.45));

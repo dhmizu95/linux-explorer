@@ -1294,6 +1294,7 @@ impl eframe::App for App {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        crate::icons::set_folder_color(self.settings.folder_color);
         self.housekeeping(&ctx);
         self.keyboard(&ctx);
         self.run_pending(&ctx);
