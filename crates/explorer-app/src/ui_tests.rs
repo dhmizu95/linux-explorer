@@ -561,3 +561,96 @@ fn every_context_menu_item_works() {
     pick(&mut h, Items, &["Open in split view"]);
     assert!(h.state().second.is_some());
 }
+
+#[test]
+fn other_context_menus_work() {
+    use crate::app::CtxTarget::{Drive, Items, Nav, Tab};
+    let root = tempfile::tempdir().unwrap();
+    let r = root.path();
+    fs::create_dir(r.join("dir")).unwrap();
+    fs::create_dir(r.join("dest")).unwrap();
+    for n in ["a.txt", "b.txt"] {
+        fs::write(r.join(n), n).unwrap();
+    }
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(1280.0, 800.0))
+        .build_eframe(|cc| App::new(cc, startup(Location::Path(r.to_path_buf()))));
+    h.run_steps(3);
+
+    // ---- sidebar folder menu ----
+    let dir = Location::Path(r.join("dir"));
+    pick(&mut h, Nav(dir.clone()), &["Open"]);
+    assert_eq!(h.state().tab().loc, dir);
+    let tabs = h.state().tabs.len();
+    pick(&mut h, Nav(dir.clone()), &["Open in new tab"]);
+    assert_eq!(h.state().tabs.len(), tabs + 1);
+    pick(&mut h, Nav(dir.clone()), &["Pin to Quick access"]);
+    assert!(h.state().settings.pinned.contains(&r.join("dir")));
+    pick(&mut h, Nav(dir.clone()), &["Unpin from Quick access"]);
+    assert!(!h.state().settings.pinned.contains(&r.join("dir")));
+    pick(&mut h, Nav(dir.clone()), &["Open in Terminal"]);
+    assert!(h.state().show_terminal);
+    pick(&mut h, Nav(dir.clone()), &["Properties"]);
+    assert_eq!(h.state().dialogs.props.len(), 1);
+    h.state_mut().dialogs.props.clear();
+
+    // ---- tab menu ----
+    let n = h.state().tabs.len();
+    pick(&mut h, Tab(0), &["Duplicate tab"]);
+    assert_eq!(h.state().tabs.len(), n + 1);
+    pick(&mut h, Tab(0), &["Close other tabs"]);
+    assert_eq!(h.state().tabs.len(), 1);
+    h.state_mut().cmd(crate::app::Cmd::NewTab(None));
+    h.run_steps(2);
+    pick(&mut h, Tab(1), &["Close tab"]);
+    assert_eq!(h.state().tabs.len(), 1);
+
+    // ---- drive menu (non-removable: no Eject/Unmount, so nothing touches the system) ----
+    let d = explorer_core::places::Drive {
+        label: "t".into(),
+        mount_point: r.to_path_buf(),
+        device: "/dev/none".into(),
+        fs_type: "ext4".into(),
+        total: 1,
+        free: 1,
+        removable: false,
+    };
+    pick(&mut h, Drive(d.clone()), &["Open in new tab"]);
+    assert_eq!(h.state().tabs.len(), 2);
+    pick(&mut h, Drive(d.clone()), &["Open"]);
+    pick(&mut h, Drive(d.clone()), &["Open in Terminal"]);
+    pick(&mut h, Drive(d.clone()), &["Properties"]);
+    assert_eq!(h.state().dialogs.props.len(), 1);
+    h.state_mut().dialogs.props.clear();
+    let i = h.state().active;
+    h.state_mut().cmd(crate::app::Cmd::CloseOtherTabs(i));
+    h.run_steps(2);
+    h.state_mut().cmd(crate::app::Cmd::Navigate(Location::Path(r.to_path_buf())));
+    h.run_steps(3);
+
+    // ---- Rename multiple (two files selected) ----
+    for n in ["a.txt", "b.txt"] {
+        h.state_mut().tab_mut().selection.insert(r.join(n));
+    }
+    pick(&mut h, Items, &["Rename multiple"]);
+    assert!(h.state().dialogs.batch.is_some());
+    h.state_mut().dialogs.batch = None;
+
+    // ---- Copy -> Paste from the background menu ----
+    h.state_mut().tab_mut().select_only_path(&r.join("a.txt"));
+    h.state_mut().cmd(crate::app::Cmd::Copy);
+    h.state_mut().cmd(crate::app::Cmd::Navigate(Location::Path(r.join("dest"))));
+    h.run_steps(3);
+    pick(&mut h, crate::app::CtxTarget::Background, &["Paste"]);
+    wait(&mut h, "paste", |a| a.ops.is_empty() && exists(&r.join("dest/a.txt")));
+
+    // ---- Extract All on a zip ----
+    h.state_mut().cmd(crate::app::Cmd::Navigate(Location::Path(r.to_path_buf())));
+    h.run_steps(3);
+    let zip = explorer_core::archive::compress_to_zip(&[r.join("b.txt")]).unwrap();
+    h.state_mut().cmd(crate::app::Cmd::Refresh);
+    h.run_steps(3);
+    h.state_mut().tab_mut().select_only_path(&zip);
+    pick(&mut h, Items, &["Extract All"]);
+    assert!(exists(&r.join("b/b.txt")), "extract failed: {:?}", h.state().dialogs.error);
+}
