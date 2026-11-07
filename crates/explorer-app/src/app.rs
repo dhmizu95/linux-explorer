@@ -1189,6 +1189,9 @@ impl App {
             let (w, h) = new.window_size;
             ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::InnerSize(egui::vec2(w, h)));
         }
+        if new.folder_color != self.settings.folder_color {
+            explorer_core::logo::update_installed(new.folder_color);
+        }
         self.settings = new;
         if theme_changed {
             self.palette = palette_for(self.settings.theme);

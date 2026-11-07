@@ -20,6 +20,7 @@ pub mod git;
 pub mod grouping;
 pub mod history;
 pub mod location;
+pub mod logo;
 pub mod meta;
 pub mod names;
 pub mod natsort;

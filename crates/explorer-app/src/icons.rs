@@ -33,12 +33,9 @@ fn folder_base() -> Color32 {
     c(FOLDER_RGB.load(Ordering::Relaxed))
 }
 
-/// Blend towards white (t>0) or black (t<0).
 fn shade(col: Color32, t: f32) -> Color32 {
-    let target = if t >= 0.0 { 255.0 } else { 0.0 };
-    let t = t.abs();
-    let f = |v: u8| (v as f32 + (target - v as f32) * t).round() as u8;
-    Color32::from_rgb(f(col.r()), f(col.g()), f(col.b()))
+    let [r, g, b] = explorer_core::logo::shade([col.r(), col.g(), col.b()], t);
+    Color32::from_rgb(r, g, b)
 }
 
 fn c(hex: u32) -> Color32 {
