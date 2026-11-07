@@ -126,6 +126,9 @@ fn mimeapps() -> MimeApps {
     }
     files.push(config_home().join("mimeapps.list"));
     for dir in xdg_data_dirs() {
+        for d in desktop.split(':').filter(|s| !s.is_empty()) {
+            files.push(dir.join(format!("applications/{d}-mimeapps.list")));
+        }
         files.push(dir.join("applications/mimeapps.list"));
         files.push(dir.join("applications/defaults.list"));
     }
@@ -524,5 +527,16 @@ mod tests {
         assert_eq!(find_icon("only", &themes, &data), Some(d.join("icons/hicolor/16x16/apps/only.png")));
         assert_eq!(find_icon("old", &themes, &data), Some(d.join("pixmaps/old.png")));
         assert_eq!(find_icon("missing", &themes, &data), None);
+    }
+}
+
+#[cfg(test)]
+mod desktop_mimeapps_tests {
+    #[test]
+    fn json_has_a_default_app_on_this_system() {
+        // Only meaningful where a desktop-specific mimeapps.list defines it (KDE here).
+        if std::path::Path::new("/usr/share/applications/kde-mimeapps.list").exists() && std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|d| d.to_lowercase().contains("kde")) {
+            assert!(super::default_app("application/json").is_some());
+        }
     }
 }
