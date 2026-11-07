@@ -188,9 +188,9 @@ struct Metrics {
 fn metrics(mode: ViewMode, compact: bool) -> Metrics {
     let c = if compact { 0.82 } else { 1.0 };
     match mode {
-        ViewMode::ExtraLargeIcons => Metrics { cell: vec2(232.0, 262.0 * c), icon: 196.0, row_major: true },
-        ViewMode::LargeIcons => Metrics { cell: vec2(122.0, 142.0 * c), icon: 96.0, row_major: true },
-        ViewMode::MediumIcons => Metrics { cell: vec2(92.0, 96.0 * c), icon: 48.0, row_major: true },
+        ViewMode::ExtraLargeIcons => Metrics { cell: vec2(232.0, 196.0 + 74.0 * c), icon: 196.0, row_major: true },
+        ViewMode::LargeIcons => Metrics { cell: vec2(122.0, 96.0 + 56.0 * c), icon: 96.0, row_major: true },
+        ViewMode::MediumIcons => Metrics { cell: vec2(92.0, 48.0 + 54.0 * c), icon: 48.0, row_major: true },
         ViewMode::SmallIcons => Metrics { cell: vec2(240.0, if compact { 22.0 } else { 26.0 }), icon: 16.0, row_major: true },
         ViewMode::List => Metrics { cell: vec2(260.0, if compact { 22.0 } else { 26.0 }), icon: 16.0, row_major: false },
         ViewMode::Details => Metrics { cell: vec2(0.0, if compact { 24.0 } else { 30.0 }), icon: 16.0, row_major: true },
