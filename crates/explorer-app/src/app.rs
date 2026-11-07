@@ -1330,7 +1330,8 @@ impl eframe::App for App {
         // Only on an actual resize, so a size typed in Folder Options survives
         // a compositor that ignores or delays the resize request.
         let size = ctx.content_rect().size();
-        if !maximized && size != self.live_size {
+        // ZERO = first frame: just learn the starting size, never overwrite the saved one with it.
+        if !maximized && self.live_size != egui::Vec2::ZERO && size != self.live_size {
             self.settings.window_size = (size.x, size.y);
         }
         self.live_size = size;
