@@ -404,3 +404,18 @@ fn context_submenu_item_click_runs_command() {
     assert!(!h.state().tab().view.sort.ascending, "submenu click should sort descending");
     assert!(h.state().ctx_menu.is_none());
 }
+
+#[test]
+fn window_size_setting_sticks() {
+    let root = tempfile::tempdir().unwrap();
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(1280.0, 800.0))
+        .build_eframe(|cc| App::new(cc, startup(Location::Path(root.path().to_path_buf()))));
+    h.run_steps(2);
+    let mut s = h.state().settings.clone();
+    s.window_size = (1000.0, 700.0);
+    let ctx = h.ctx.clone();
+    h.state_mut().apply_settings(&ctx, s);
+    h.run_steps(3);
+    assert_eq!(h.state().settings.window_size, (1000.0, 700.0));
+}

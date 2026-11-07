@@ -178,6 +178,8 @@ pub struct App {
     pub bin_full: bool,
     pub pending: Vec<Cmd>,
     pub ctx_menu: Option<CtxMenu>,
+    /// Window size seen last frame; settings follow it only when it changes.
+    live_size: egui::Vec2,
     pub focus_address: bool,
     pub focus_search: bool,
     pub frame: u64,
@@ -258,6 +260,7 @@ impl App {
             bin_full: !trashbin::is_empty(),
             pending: Vec::new(),
             ctx_menu: None,
+            live_size: egui::Vec2::ZERO,
             focus_address: false,
             focus_search: false,
             frame: 0,
@@ -1324,10 +1327,13 @@ impl eframe::App for App {
         // Track the live size so Folder Options shows it and close saves it.
         // content_rect, not viewport().inner_rect: Wayland never reports the latter.
         let maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false) || i.viewport().fullscreen.unwrap_or(false));
-        if !maximized {
-            let r = ctx.content_rect();
-            self.settings.window_size = (r.width(), r.height());
+        // Only on an actual resize, so a size typed in Folder Options survives
+        // a compositor that ignores or delays the resize request.
+        let size = ctx.content_rect().size();
+        if !maximized && size != self.live_size {
+            self.settings.window_size = (size.x, size.y);
         }
+        self.live_size = size;
         if ctx.input(|i| i.viewport().close_requested()) {
             self.settings.session = self.tabs.iter().filter_map(|t| t.loc.path().map(Path::to_path_buf)).collect();
             self.save_settings();
