@@ -633,7 +633,14 @@ fn items_view(app: &mut App, ui: &mut Ui) {
             any_item_hovered |= resp.hovered();
             let selected = app.tab().selection.contains(&e.path);
             let drop_target = e.is_dir() && resp.dnd_hover_payload::<DragPaths>().is_some_and(|pl| !pl.0.contains(&e.path));
-            paint_item_bg(ui, sr, &resp, selected, drop_target, Some(i) == focus && ui.memory(|m| m.focused().is_none()), &p);
+            // A selected icon tile shows its full (up to 4-line) name; grow the highlight to hold it.
+            let mut bg = sr;
+            if selected && matches!(mode, ViewMode::ExtraLargeIcons | ViewMode::LargeIcons | ViewMode::MediumIcons) {
+                let top = sr.top() + 6.0 + m.icon + 4.0;
+                let g = widgets::wrapped(ui, &display_name(app, &e), FontId::proportional(13.5), p.text, sr.width() - 8.0, 4, Align::Center);
+                bg.max.y = bg.max.y.max(top + g.size().y + 4.0);
+            }
+            paint_item_bg(ui, bg, &resp, selected, drop_target, Some(i) == focus && ui.memory(|m| m.focused().is_none()), &p);
             let dim = cut_set.contains(&e.path) || e.hidden;
             let depth = app.tab().depth.get(i).copied().unwrap_or(0);
             paint_item(app, ui, sr, &e, mode, &cols, &widths, check_w, selected, dim, depth);
