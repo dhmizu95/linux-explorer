@@ -6,7 +6,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use eframe::egui::{self, Key, Modifiers};
-use egui_kittest::kittest::Queryable;
+use egui_kittest::kittest::{NodeT, Queryable};
 use egui_kittest::Harness;
 use explorer_core::location::Location;
 use explorer_core::ops::ConflictChoice;
@@ -444,4 +444,120 @@ fn open_with_is_in_the_menu_and_choose_another_app_works() {
     h.run_steps(3);
     assert!(h.state().dialogs.open_with.is_some(), "picker dialog should open");
     assert!(h.state().ctx_menu.is_none());
+}
+
+/// Open the context menu, hover down through `path[..n-1]` (submenus), click the last label.
+fn pick(h: &mut Harness<'_, App>, target: crate::app::CtxTarget, path: &[&str]) {
+    h.state_mut().cmd(crate::app::Cmd::ContextMenu(egui::pos2(400.0, 200.0), target));
+    h.run_steps(3);
+    let (last, parents) = path.split_last().unwrap();
+    for p in parents {
+        h.get_by_label(p).hover();
+        h.run_steps(3);
+    }
+    fn find<'a>(h: &'a Harness<'_, App>, l: &'a str) -> egui_kittest::Node<'a> {
+        let mut all: Vec<_> = h.query_all_by_label(l).collect();
+        if all.is_empty() {
+            all = h.query_all_by_label_contains(l).collect();
+        }
+        assert!(!all.is_empty(), "no menu item labelled {l:?}");
+        // a row exposes both its label atom and the button; click the button
+        let i = all.iter().position(|n| n.accesskit_node().role() == egui::accesskit::Role::Button).unwrap_or(0);
+        all.swap_remove(i)
+    }
+    find(h, last).hover();
+    h.run_steps(1);
+    find(h, last).click();
+    h.run_steps(3);
+    assert!(h.state().ctx_menu.is_none(), "menu should close after {path:?}");
+}
+
+#[test]
+fn every_context_menu_item_works() {
+    use crate::app::CtxTarget::{Background, Items};
+    let root = tempfile::tempdir().unwrap();
+    let r = root.path();
+    fs::create_dir(r.join("dir")).unwrap();
+    fs::write(r.join("a.txt"), b"a").unwrap();
+    fs::write(r.join("b.txt"), b"b").unwrap();
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(1280.0, 800.0))
+        .build_eframe(|cc| App::new(cc, startup(Location::Path(r.to_path_buf()))));
+    h.run_steps(3);
+
+    // ---- background menu ----
+    pick(&mut h, Background, &["Sort by", "Size"]);
+    assert_eq!(h.state().tab().view.sort.key, explorer_core::sorting::SortKey::Size);
+    pick(&mut h, Background, &["Sort by", "Descending"]);
+    assert!(!h.state().tab().view.sort.ascending);
+    pick(&mut h, Background, &["Sort by", "Ascending"]);
+    assert!(h.state().tab().view.sort.ascending);
+    let compact = h.state().settings.compact;
+    pick(&mut h, Background, &["View", "Compact view"]);
+    assert_ne!(h.state().settings.compact, compact);
+    for m in explorer_core::settings::ViewMode::ALL {
+        pick(&mut h, Background, &["View", m.label()]);
+        assert_eq!(h.state().tab().view.mode, m, "view {}", m.label());
+    }
+    for g in explorer_core::grouping::GroupBy::ALL {
+        pick(&mut h, Background, &["Group by", g.label()]);
+        assert_eq!(h.state().tab().view.group, g, "group {}", g.label());
+    }
+    pick(&mut h, Background, &["Refresh F5"]);
+    pick(&mut h, Background, &["New", "Folder"]);
+    assert!(exists(&r.join("New folder")));
+    h.key_press(Key::Escape); // leave the inline rename
+    h.run_steps(2);
+    pick(&mut h, Background, &["New", "Text Document"]);
+    assert!(exists(&r.join("New Text Document.txt")));
+    h.key_press(Key::Escape);
+    h.run_steps(2);
+    pick(&mut h, Background, &["New", "Empty File"]);
+    assert!(exists(&r.join("New File")));
+    h.key_press(Key::Escape);
+    h.run_steps(2);
+    pick(&mut h, Background, &["Undo"]); // label is "Undo ..." from the undo stack
+    assert!(!exists(&r.join("New File")));
+    pick(&mut h, Background, &["Open in Terminal"]);
+    assert!(h.state().show_terminal);
+    pick(&mut h, Background, &["Properties"]);
+    assert_eq!(h.state().dialogs.props.len(), 1);
+    h.state_mut().dialogs.props.clear();
+
+    // ---- items menu: a file ----
+    let a = r.join("a.txt");
+    h.state_mut().tab_mut().select_only_path(&a);
+    pick(&mut h, Items, &["Copy as path"]);
+    pick(&mut h, Items, &["Create shortcut"]);
+    assert!(exists(&r.join("a.txt - Shortcut")));
+    pick(&mut h, Items, &["Duplicate"]);
+    assert!(h.state().tab().visible.len() > 3);
+    pick(&mut h, Items, &["Compress to ZIP file"]);
+    assert!(fs::read_dir(r).unwrap().any(|e| e.unwrap().path().extension().is_some_and(|x| x == "zip")));
+    h.key_press(Key::Escape);
+    h.run_steps(2);
+    h.state_mut().tab_mut().select_only_path(&a);
+    pick(&mut h, Items, &["Properties"]);
+    assert_eq!(h.state().dialogs.props.len(), 1);
+    h.state_mut().dialogs.props.clear();
+    pick(&mut h, Items, &["Open with", "Choose another app"]);
+    assert!(h.state().dialogs.open_with.is_some());
+    h.state_mut().dialogs.open_with = None;
+
+    // ---- items menu: a folder ----
+    let d = r.join("dir");
+    h.state_mut().tab_mut().select_only_path(&d);
+    let tabs = h.state().tabs.len();
+    pick(&mut h, Items, &["Open in new tab"]);
+    assert_eq!(h.state().tabs.len(), tabs + 1);
+    let i = h.state().active;
+    h.state_mut().cmd(crate::app::Cmd::CloseTab(i));
+    h.run_steps(2);
+    h.state_mut().tab_mut().select_only_path(&d);
+    pick(&mut h, Items, &["Pin to Quick access"]);
+    assert!(h.state().settings.pinned.contains(&d));
+    pick(&mut h, Items, &["Unpin from Quick access"]);
+    assert!(!h.state().settings.pinned.contains(&d));
+    pick(&mut h, Items, &["Open in split view"]);
+    assert!(h.state().second.is_some());
 }
