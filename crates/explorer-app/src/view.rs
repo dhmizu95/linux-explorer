@@ -1020,6 +1020,11 @@ fn section_header(ui: &mut Ui, label: &str, open: &mut bool, p: &crate::theme::P
     }
 }
 
+/// Double-click opens a tile, or a single click when that option is on.
+fn tile_opened(app: &App, resp: &Response) -> bool {
+    resp.double_clicked() || resp.clicked() && app.settings.single_click_open
+}
+
 fn tile(ui: &mut Ui, app: &App, size: Vec2, icon: Icon, title: &str, sub: &str, id: Id) -> Response {
     let p = app.palette;
     let (r, _) = ui.allocate_exact_size(size, Sense::hover());
@@ -1052,7 +1057,7 @@ fn home_page(app: &mut App, ui: &mut Ui) {
                         let sub = pin.parent().map(location::display_name).unwrap_or_default();
                         let resp = tile(ui, app, vec2(250.0, 64.0), path_icon(&pin), &location::display_name(&pin), &sub, Id::unique(("qa", &pin)));
                         crate::nav::pin_glyph(ui.painter(), Rect::from_center_size(resp.rect.right_top() + vec2(-16.0, 16.0), vec2(11.0, 11.0)), p.text_dim);
-                        if resp.clicked() {
+                        if tile_opened(app, &resp) {
                             app.cmd(Cmd::Navigate(Location::Path(pin.clone())));
                         }
                         if resp.middle_clicked() {
@@ -1143,7 +1148,7 @@ fn this_pc_page(app: &mut App, ui: &mut Ui) {
                     }
                     for (label, pth) in list {
                         let resp = tile(ui, app, vec2(220.0, 64.0), path_icon(&pth), &label, "", Id::unique(("pcf", &pth)));
-                        if resp.double_clicked() || resp.clicked() && app.settings.single_click_open {
+                        if tile_opened(app, &resp) {
                             app.cmd(Cmd::Navigate(Location::Path(pth.clone())));
                         }
                     }
@@ -1176,7 +1181,7 @@ fn this_pc_page(app: &mut App, ui: &mut Ui) {
                         ui.painter().rect_filled(Rect::from_min_size(bar.min, vec2(bar.width() * frac, bar.height())), CornerRadius::same(2), col);
                         let free = format!("{} free of {}", format::size_human(d.free), format::size_human(d.total));
                         ui.painter().text(pos2(x, r.top() + 56.0), Align2::LEFT_CENTER, free, FontId::proportional(12.0), p.text_dim);
-                        if resp.clicked() || resp.double_clicked() {
+                        if tile_opened(app, &resp) {
                             app.cmd(Cmd::Navigate(Location::Path(d.mount_point.clone())));
                         }
                         if resp.secondary_clicked() {
@@ -1204,7 +1209,7 @@ fn this_pc_page(app: &mut App, ui: &mut Ui) {
                             let sub = format!("{} {} · click to mount", format::size_human(v.size), v.fs_type);
                             let icon = Icon::Drive { removable: v.removable, system: false };
                             let resp = tile(ui, app, vec2(300.0, 64.0), icon, &v.label, &sub, Id::unique(("vol", &v.id)));
-                            if resp.clicked() {
+                            if tile_opened(app, &resp) {
                                 app.cmd(Cmd::MountVolume(v.clone()));
                             }
                             resp.on_hover_text(&v.id);
@@ -1229,7 +1234,7 @@ fn network_page(app: &mut App, ui: &mut Ui) {
             for m in mounts {
                 let label = location::display_name(&m);
                 let resp = tile(ui, app, vec2(300.0, 64.0), Icon::Network, &label, &m.to_string_lossy(), Id::unique(("net", &m)));
-                if resp.clicked() {
+                if tile_opened(app, &resp) {
                     app.cmd(Cmd::Navigate(Location::Path(m.clone())));
                 }
             }
