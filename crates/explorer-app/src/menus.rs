@@ -209,6 +209,15 @@ fn items_menu(app: &mut App, ui: &mut Ui, cmds: &mut Vec<Cmd>) {
         return;
     }
     let in_folder = matches!(app.tab().loc, Location::Path(_));
+    let single = (sel.len() == 1).then(|| sel[0].clone());
+    if item(ui, "Open", "Enter") {
+        cmds.push(Cmd::OpenSelection);
+    }
+    if let Some(e) = &single {
+        open_with(app, ui, &e.path, cmds);
+    }
+    ui.add_space(2.0);
+    ui.separator();
     icon_row(
         app,
         ui,
@@ -220,10 +229,6 @@ fn items_menu(app: &mut App, ui: &mut Ui, cmds: &mut Vec<Cmd>) {
         ],
         cmds,
     );
-    let single = (sel.len() == 1).then(|| sel[0].clone());
-    if item(ui, "Open", "Enter") {
-        cmds.push(Cmd::OpenSelection);
-    }
     if let Some(e) = &single {
         if e.is_dir() {
             if item(ui, "Open in new tab", "") {
@@ -239,11 +244,8 @@ fn items_menu(app: &mut App, ui: &mut Ui, cmds: &mut Vec<Cmd>) {
             if item(ui, "Open in Terminal", "") {
                 cmds.push(Cmd::OpenTerminal(e.path.clone()));
             }
-        } else {
-            open_with(app, ui, &e.path, cmds);
-            if archive::is_archive(&e.path) && item(ui, "Extract All…", "") {
-                cmds.push(Cmd::Extract(e.path.clone()));
-            }
+        } else if archive::is_archive(&e.path) && item(ui, "Extract All…", "") {
+            cmds.push(Cmd::Extract(e.path.clone()));
         }
     }
     if in_folder {

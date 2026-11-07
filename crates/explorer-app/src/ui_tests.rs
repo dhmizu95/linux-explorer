@@ -419,3 +419,29 @@ fn window_size_setting_sticks() {
     h.run_steps(3);
     assert_eq!(h.state().settings.window_size, (1000.0, 700.0));
 }
+
+#[test]
+fn open_with_is_in_the_menu_and_choose_another_app_works() {
+    use crate::app::{Cmd, CtxTarget};
+    let root = tempfile::tempdir().unwrap();
+    let f = root.path().join("a.json");
+    fs::write(&f, b"{}").unwrap();
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(1280.0, 800.0))
+        .build_eframe(|cc| App::new(cc, startup(Location::Path(root.path().to_path_buf()))));
+    h.run_steps(2);
+    h.state_mut().tab_mut().select_only_path(&f);
+    h.state_mut().cmd(Cmd::ContextMenu(egui::pos2(500.0, 300.0), CtxTarget::Items));
+    h.run_steps(3);
+    let top = |h: &Harness<'_, App>, l: &str| h.get_by_label(l).rect().top();
+    assert!(top(&h, "Open Enter") < top(&h, "Open with"), "Open above Open with");
+    assert!(top(&h, "Open with") < top(&h, "Copy as path Ctrl+Shift+C"), "Open with above the other commands");
+    h.get_by_label("Open with").hover();
+    h.run_steps(3);
+    h.get_by_label("Choose another app").hover();
+    h.run_steps(1);
+    h.get_by_label("Choose another app").click();
+    h.run_steps(3);
+    assert!(h.state().dialogs.open_with.is_some(), "picker dialog should open");
+    assert!(h.state().ctx_menu.is_none());
+}
